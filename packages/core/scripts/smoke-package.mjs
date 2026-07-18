@@ -13,8 +13,8 @@ const workspaceRoot = path.resolve(packageRoot, "../..");
 const smokeRoot = await mkdtemp(path.join(tmpdir(), "t2k-core-smoke-"));
 
 const smokeProgram = String.raw`
-import { T2kClient, parseOntologyPackManifest } from "@t2k/core";
-import { compileOntologyPackSet } from "@t2k/core/compiler";
+import { T2kClient, parseOntologyPackManifest } from "@t2kai/core";
+import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { readFile } from "node:fs/promises";
 
 const manifest = {
@@ -61,7 +61,7 @@ const compiled = compileOntologyPackSet({
   roots: [{ ontologyId: "smoke", version: "^1.0.0" }],
 });
 const schemaUrl = import.meta.resolve(
-  "@t2k/core/schema/t2k-ontology-pack.v1.json"
+  "@t2kai/core/schema/t2k-ontology-pack.v1.json"
 );
 const schema = JSON.parse(await readFile(new URL(schemaUrl), "utf8"));
 const client = new T2kClient({ baseUrl: "https://studio.t2k.ai/" });
@@ -84,7 +84,7 @@ try {
       [
         "pack",
         "--workspace",
-        "@t2k/core",
+        "@t2kai/core",
         "--pack-destination",
         smokeRoot,
         "--silent",
@@ -111,11 +111,11 @@ try {
 
   const installedManifest = JSON.parse(
     await readFile(
-      path.join(smokeRoot, "node_modules/@t2k/core/package.json"),
+      path.join(smokeRoot, "node_modules/@t2kai/core/package.json"),
       "utf8"
     )
   );
-  console.log(`Packed @t2k/core@${installedManifest.version} smoke test passed.`);
+  console.log(`Packed @t2kai/core@${installedManifest.version} smoke test passed.`);
 } finally {
   await rm(smokeRoot, { recursive: true, force: true });
 }

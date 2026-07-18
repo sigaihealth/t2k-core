@@ -10,5 +10,5 @@ rules in the versioned specification.
 
 - Initial clean-room public developer preview.
 - Ontology-pack specification and JSON Schema v1.0.
-- `@t2k/core` compiler, contracts, client, reference policy, and replay evaluator.
+- `@t2kai/core` compiler, contracts, client, reference policy, and replay evaluator.
 - Conformance kit and synthetic Harborlight example.

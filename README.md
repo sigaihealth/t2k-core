@@ -51,13 +51,13 @@ challenger against a disjoint 20-episode holdout. Both policies have logged
 action support; the evaluator computes the result rather than accepting caller
 supplied metrics.
 
-## Package Preview
+## Install the Package
 
-Until the first npm release, build a normal installable tarball:
+The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
+the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm pack --workspace @t2k/core
-npm install /path/to/t2k-core-0.1.0.tgz
+npm install @t2kai/core
 ```
 
 ```ts
@@ -65,8 +65,8 @@ import {
   evaluateReferencePolicy,
   evaluateReferenceReplay,
   validateOntologyPackManifest,
-} from "@t2k/core";
-import { compileOntologyPackSet } from "@t2k/core/compiler";
+} from "@t2kai/core";
+import { compileOntologyPackSet } from "@t2kai/core/compiler";
 ```
 
 See [packages/core/README.md](packages/core/README.md) for API examples and

@@ -1,4 +1,4 @@
-# `@t2k/core`
+# `@t2kai/core`
 
 Portable contracts and deterministic components for ontology-centered,
 governed decision agents.
@@ -19,7 +19,7 @@ published schema rather than maintaining a second validity contract. Node.js
 ## Compile Packs Locally
 
 ```ts
-import { compileOntologyPackSet } from "@t2k/core/compiler";
+import { compileOntologyPackSet } from "@t2kai/core/compiler";
 
 const result = compileOntologyPackSet({
   manifests: [corePack, fieldServicePack],
@@ -40,7 +40,7 @@ produces identical resolution and definition hashes.
 ## Validate the Standard
 
 ```ts
-import { validateOntologyPackManifest } from "@t2k/core";
+import { validateOntologyPackManifest } from "@t2kai/core";
 
 const validation = validateOntologyPackManifest(manifest);
 if (!validation.valid) {
@@ -49,7 +49,7 @@ if (!validation.valid) {
 ```
 
 The canonical package schema is exported as
-`@t2k/core/schema/t2k-ontology-pack.v1.json`.
+`@t2kai/core/schema/t2k-ontology-pack.v1.json`.
 
 ## Execute and Evaluate a Reference Policy
 
@@ -57,7 +57,7 @@ The canonical package schema is exported as
 import {
   evaluateReferencePolicy,
   evaluateReferenceReplay,
-} from "@t2k/core";
+} from "@t2kai/core";
 
 const policy = {
   referencePolicy: {
@@ -93,7 +93,7 @@ Use the client only from trusted server, worker, CLI, or agent-host code. Never
 embed a control-plane API key in browser-delivered JavaScript.
 
 ```ts
-import { T2kClient } from "@t2k/core";
+import { T2kClient } from "@t2kai/core";
 
 const t2k = new T2kClient({
   baseUrl: "https://studio.t2k.ai",
