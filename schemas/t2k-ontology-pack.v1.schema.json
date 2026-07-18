@@ -1,0 +1,741 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://t2k.ai/schemas/t2k-ontology-pack.v1.schema.json",
+  "title": "T2K Ontology Pack Manifest",
+  "description": "Canonical manifest contract for governed T2K ontology packs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestType",
+    "manifestVersion",
+    "ontologyVersion",
+    "ontologyId",
+    "label",
+    "packKind",
+    "status",
+    "scope",
+    "objectTypes"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "manifestType": {
+      "const": "t2k.ontology-pack"
+    },
+    "manifestVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "ontologyVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "ontologyId": {
+      "$ref": "#/$defs/namespacedId"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "packKind": {
+      "enum": ["core", "context", "vertical", "workflow", "project"]
+    },
+    "status": {
+      "enum": ["draft", "review", "accepted", "deprecated"]
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "extends": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/packDependency"
+      }
+    },
+    "contextDimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/contextDimension"
+      }
+    },
+    "objectTypes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/objectType"
+      }
+    },
+    "structuralRelationships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/structuralRelationship"
+      }
+    },
+    "canonicalLinks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/canonicalLink"
+      }
+    },
+    "sourceMappings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceMapping"
+      }
+    },
+    "authorityModel": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/authorityRule"
+      }
+    },
+    "eventTypes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/eventType"
+      }
+    },
+    "reasoningFunctions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reasoningFunction"
+      }
+    },
+    "decisionTemplates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decisionTemplate"
+      }
+    },
+    "normalizationRules": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "validationRules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/validationRule"
+      }
+    },
+    "openSemanticQuestions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/openSemanticQuestion"
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "namespacedId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "description"],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jurisdictions": {
+          "$ref": "#/$defs/stringList"
+        },
+        "industries": {
+          "$ref": "#/$defs/stringList"
+        },
+        "businessStages": {
+          "$ref": "#/$defs/stringList"
+        },
+        "organizationSizes": {
+          "$ref": "#/$defs/stringList"
+        },
+        "exclusions": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "packDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ontologyId", "version"],
+      "properties": {
+        "ontologyId": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "contextDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "requirement"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requirement": {
+          "enum": ["required", "optional", "not_applicable"]
+        },
+        "allowedValues": {
+          "$ref": "#/$defs/stringList"
+        },
+        "sourceRequired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "propertyDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valueType"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "valueType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "authorityDomain": {
+          "type": "string"
+        },
+        "temporal": {
+          "type": "boolean"
+        }
+      }
+    },
+    "objectType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "family", "purpose", "identity"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "label": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nodeKind": {
+          "enum": [
+            "person",
+            "organization",
+            "diagnosis",
+            "symptom",
+            "claim",
+            "gap",
+            "artifact",
+            "risk",
+            "workspace",
+            "authority",
+            "source",
+            "operating-entity",
+            "financial-event",
+            "workflow",
+            "case",
+            "action",
+            "freshness",
+            "outcome",
+            "reference"
+          ]
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identity": {
+          "$ref": "#/$defs/stringList"
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/propertyDefinition"
+          }
+        },
+        "specializes": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "replaces": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "compatibilityNote": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "replaces": {}
+            },
+            "required": ["replaces"]
+          },
+          "then": {
+            "required": ["compatibilityNote"],
+            "properties": {
+              "compatibilityNote": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "structuralRelationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "property", "to", "cardinality"],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "property": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "to": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "cardinality": {
+          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "canonicalLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["link", "use"],
+      "properties": {
+        "link": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "use": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sourceMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceType", "sourceLocator", "object", "authority", "reviewStatus"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "sourceType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLocator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "string"
+        },
+        "object": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "properties": {
+          "type": "string"
+        },
+        "transform": {
+          "type": "string"
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "riskTier": {
+          "type": "string"
+        },
+        "reviewStatus": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "authorityRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "authority", "status"],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string"
+        },
+        "effectiveFrom": {
+          "type": "string"
+        },
+        "reviewDueAt": {
+          "type": "string"
+        }
+      }
+    },
+    "eventType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "createsOrUpdates", "humanCheckpoint"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createsOrUpdates": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "humanCheckpoint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reasoningFunction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "input", "output", "humanCheckpoint"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1
+        },
+        "humanCheckpoint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decisionTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "decisionType",
+        "requiredContext",
+        "requiredFacts",
+        "objective",
+        "successMeasure",
+        "alternatives",
+        "criteria",
+        "policies",
+        "authority",
+        "riskLevel",
+        "outcomeMeasures"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredContext": {
+          "$ref": "#/$defs/stringList"
+        },
+        "requiredFacts": {
+          "$ref": "#/$defs/stringList"
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1
+        },
+        "successMeasure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alternatives": {
+          "$ref": "#/$defs/stringList"
+        },
+        "criteria": {
+          "$ref": "#/$defs/stringList"
+        },
+        "comparisonMethod": {
+          "type": "string"
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
+        },
+        "assumptions": {
+          "$ref": "#/$defs/stringList"
+        },
+        "forecasts": {
+          "$ref": "#/$defs/stringList"
+        },
+        "uncertainties": {
+          "$ref": "#/$defs/stringList"
+        },
+        "freshnessLimit": {
+          "type": "string"
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delegation": {
+          "type": "string"
+        },
+        "approvalLimit": {
+          "type": "string"
+        },
+        "riskLevel": {
+          "enum": ["L0", "L1", "L2", "L3", "L4"]
+        },
+        "allowedActionProposals": {
+          "$ref": "#/$defs/stringList"
+        },
+        "rollbackExpectation": {
+          "type": "string"
+        },
+        "outcomeMeasures": {
+          "$ref": "#/$defs/stringList"
+        },
+        "reviewHorizon": {
+          "type": "string"
+        },
+        "learningContract": {
+          "$ref": "#/$defs/decisionLearningContract"
+        }
+      }
+    },
+    "rewardDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measureRef",
+        "label",
+        "direction",
+        "weight",
+        "required",
+        "guardrail",
+        "observationWindow",
+        "aggregation",
+        "baselineMethod",
+        "attributionMethod"
+      ],
+      "properties": {
+        "measureRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": ["maximize", "minimize", "target", "range"]
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "guardrail": {
+          "type": "boolean"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "target": {
+          "type": "number"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "observationWindow": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregation": {
+          "enum": ["latest", "sum", "average", "minimum", "maximum"]
+        },
+        "baselineMethod": {
+          "enum": ["explicit", "previous_state", "control", "none"]
+        },
+        "attributionMethod": {
+          "enum": ["direct", "human_review", "comparison", "experiment", "unknown"]
+        }
+      }
+    },
+    "decisionLearningContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "stateSchema",
+        "actionSchema",
+        "rewardSpec",
+        "observationSchedule",
+        "terminalConditions",
+        "explorationPolicy",
+        "safetyConstraints",
+        "promotionCriteria"
+      ],
+      "properties": {
+        "mode": {
+          "enum": ["none", "supervised_feedback", "contextual_bandit", "sequential_rl", "optimization"]
+        },
+        "stateSchema": {
+          "type": "object"
+        },
+        "actionSchema": {
+          "type": "object"
+        },
+        "rewardSpec": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rewardDimension"
+          }
+        },
+        "observationSchedule": {
+          "$ref": "#/$defs/stringList"
+        },
+        "terminalConditions": {
+          "$ref": "#/$defs/stringList"
+        },
+        "explorationPolicy": {
+          "type": "object"
+        },
+        "safetyConstraints": {
+          "type": "array"
+        },
+        "promotionCriteria": {
+          "type": "object"
+        }
+      }
+    },
+    "validationRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "level", "severity", "target", "assertion", "message"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "level": {
+          "enum": ["referential", "structural", "semantic", "governance", "behavioral"]
+        },
+        "severity": {
+          "enum": ["error", "warning", "review"]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assertion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "openSemanticQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "owner", "blocks"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blocks": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://t2k.ai/schemas/t2k-ontology-pack.v1.schema.json",
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.minimal",
+  "label": "Minimal conformance pack",
+  "description": "The smallest useful positive conformance fixture.",
+  "packKind": "core",
+  "status": "accepted",
+  "scope": {
+    "domain": "conformance",
+    "description": "Synthetic definitions used only by the conformance suite."
+  },
+  "objectTypes": [
+    {
+      "id": "record",
+      "label": "Record",
+      "family": "Conformance fixture",
+      "nodeKind": "artifact",
+      "purpose": "Provides one deterministic typed definition.",
+      "identity": [
+        "record_id"
+      ],
+      "properties": [
+        {
+          "id": "record_id",
+          "valueType": "string",
+          "required": true,
+          "description": "Synthetic stable identifier.",
+          "authorityDomain": "fixture",
+          "temporal": false
+        }
+      ]
+    }
+  ]
+}

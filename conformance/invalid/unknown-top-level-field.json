@@ -1,0 +1,24 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.invalid-unknown",
+  "label": "Invalid unknown field fixture",
+  "packKind": "core",
+  "status": "draft",
+  "scope": {
+    "domain": "conformance",
+    "description": "Must be rejected because v1 closes the top-level object."
+  },
+  "objectTypes": [
+    {
+      "id": "record",
+      "family": "Conformance fixture",
+      "purpose": "Exercises unknown-field rejection.",
+      "identity": [
+        "record_id"
+      ]
+    }
+  ],
+  "silentlyIgnoreThis": true
+}

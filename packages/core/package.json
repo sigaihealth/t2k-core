@@ -1,0 +1,71 @@
+{
+  "name": "@t2k/core",
+  "version": "0.1.0",
+  "description": "Contracts, ontology pack compiler, and API client for governed T2K decision systems.",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ontology",
+    "knowledge-graph",
+    "decision-intelligence",
+    "ai-agents",
+    "governance"
+  ],
+  "homepage": "https://t2k.ai/developers/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sigaihealth/t2k-core.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/sigaihealth/t2k-core/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "import": "./dist/compiler.js",
+      "default": "./dist/compiler.js"
+    },
+    "./schema/t2k-ontology-pack.v1.json": "./dist/schema/t2k-ontology-pack.v1.schema.json",
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "schema:sync": "node scripts/sync-schema.mjs",
+    "prebuild": "npm run schema:sync",
+    "build": "rm -rf dist && tsc -p tsconfig.json && node scripts/copy-schema.mjs",
+    "prepack": "npm run build",
+    "pretypecheck": "npm run schema:sync",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run schema:sync",
+    "test": "vitest run",
+    "pack:check": "npm pack --dry-run",
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "release:verify": "node scripts/verify-release-tag.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

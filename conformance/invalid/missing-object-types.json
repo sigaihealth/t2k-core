@@ -1,0 +1,13 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.invalid-missing-types",
+  "label": "Invalid missing object types fixture",
+  "packKind": "core",
+  "status": "draft",
+  "scope": {
+    "domain": "conformance",
+    "description": "Must be rejected because every pack defines an object type."
+  }
+}

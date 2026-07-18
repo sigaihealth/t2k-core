@@ -1,0 +1,47 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.invalid-learning-mode",
+  "label": "Invalid learning mode fixture",
+  "packKind": "workflow",
+  "status": "draft",
+  "scope": {
+    "domain": "conformance",
+    "description": "Must be rejected instead of coercing the learning mode."
+  },
+  "objectTypes": [
+    {
+      "id": "record",
+      "family": "Conformance fixture",
+      "purpose": "Supports an invalid decision template fixture.",
+      "identity": [
+        "record_id"
+      ]
+    }
+  ],
+  "decisionTemplates": [
+    {
+      "id": "invalid_mode",
+      "question": "Should an invalid mode be accepted?",
+      "decisionType": "conformance.invalid_mode",
+      "objective": "Prove exact enum validation.",
+      "alternatives": [
+        "reject"
+      ],
+      "authority": "fixture_reviewer",
+      "riskLevel": "L0",
+      "learningContract": {
+        "mode": "magic_autonomy",
+        "stateSchema": {},
+        "actionSchema": {},
+        "rewardSpec": [],
+        "observationSchedule": [],
+        "terminalConditions": [],
+        "explorationPolicy": {},
+        "safetyConstraints": [],
+        "promotionCriteria": {}
+      }
+    }
+  ]
+}
