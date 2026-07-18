@@ -1,0 +1,27 @@
+{
+  "policyKey": "harborlight-dispatch",
+  "version": "1.0.0",
+  "specification": {
+    "referencePolicy": {
+      "rules": [
+        {
+          "all": [
+            {
+              "path": "facts.0.objectValue",
+              "operator": "gte",
+              "value": 0.6
+            }
+          ],
+          "action": "authorize_overtime"
+        }
+      ],
+      "defaultAction": "hold",
+      "evaluation": {
+        "minimumEpisodes": 20,
+        "minimumImprovement": 0.05,
+        "confidenceZ": 1.96,
+        "minimumCoverage": 0.2
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "{{PROJECT_NAME}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "start": "node src/run.mjs",
+    "check": "node src/run.mjs"
+  },
+  "dependencies": {
+    "@t2kai/core": "^0.1.0"
+  }
+}

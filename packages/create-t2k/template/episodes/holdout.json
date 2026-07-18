@@ -1,0 +1,322 @@
+[
+  {
+    "episodeId": "holdout-overtime-01",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.61
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-02",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.62
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-03",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.63
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-04",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.64
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-05",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.65
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-06",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.66
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-07",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.67
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-08",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.68
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-09",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.69
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-overtime-10",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.7
+        }
+      ]
+    },
+    "loggedAction": "authorize_overtime",
+    "scalarReward": -0.5,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-rebalance-01",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.72
+        }
+      ]
+    },
+    "loggedAction": "rebalance_route",
+    "scalarReward": 1,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.1.0"
+  },
+  {
+    "episodeId": "holdout-rebalance-02",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.73
+        }
+      ]
+    },
+    "loggedAction": "rebalance_route",
+    "scalarReward": 1,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.1.0"
+  },
+  {
+    "episodeId": "holdout-rebalance-03",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.74
+        }
+      ]
+    },
+    "loggedAction": "rebalance_route",
+    "scalarReward": 1,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.1.0"
+  },
+  {
+    "episodeId": "holdout-rebalance-04",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.75
+        }
+      ]
+    },
+    "loggedAction": "rebalance_route",
+    "scalarReward": 1,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.1.0"
+  },
+  {
+    "episodeId": "holdout-rebalance-05",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.76
+        }
+      ]
+    },
+    "loggedAction": "rebalance_route",
+    "scalarReward": 1,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.1.0"
+  },
+  {
+    "episodeId": "holdout-rebalance-06",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.77
+        }
+      ]
+    },
+    "loggedAction": "rebalance_route",
+    "scalarReward": 1,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.1.0"
+  },
+  {
+    "episodeId": "holdout-hold-01",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.21
+        }
+      ]
+    },
+    "loggedAction": "hold",
+    "scalarReward": 0,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-hold-02",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.24
+        }
+      ]
+    },
+    "loggedAction": "hold",
+    "scalarReward": 0,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-hold-03",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.27
+        }
+      ]
+    },
+    "loggedAction": "hold",
+    "scalarReward": 0,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  },
+  {
+    "episodeId": "holdout-hold-04",
+    "state": {
+      "facts": [
+        {
+          "objectValue": 0.3
+        }
+      ]
+    },
+    "loggedAction": "hold",
+    "scalarReward": 0,
+    "learningMode": "supervised_feedback",
+    "behaviorProbability": null,
+    "guardrailViolation": false,
+    "policyVersionId": "harborlight-dispatch@1.0.0"
+  }
+]

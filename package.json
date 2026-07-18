@@ -12,11 +12,13 @@
   "scripts": {
     "build": "npm run build --workspace @t2kai/core",
     "typecheck": "npm run typecheck --workspace @t2kai/core",
-    "test": "npm run test --workspace @t2kai/core",
+    "test": "npm run test --workspaces --if-present",
     "conformance": "npm run build && node conformance/run.mjs",
     "example:harborlight": "npm run build && node examples/harborlight/run.mjs",
+    "example:scaffold": "npm run build && node packages/create-t2k/scripts/smoke-generated-project.mjs",
     "pack:core": "npm run build --workspace @t2kai/core && npm run pack:check --workspace @t2kai/core && npm run smoke:package --workspace @t2kai/core",
+    "pack:create-t2k": "npm run pack:check --workspace create-t2k && npm run smoke:package --workspace create-t2k",
     "scrub": "node scripts/scrub-check.mjs",
-    "check": "npm run scrub && npm run typecheck && npm test && npm run conformance && npm run example:harborlight && npm audit --omit=dev --audit-level=high && npm run pack:core"
+    "check": "npm run scrub && npm run typecheck && npm test && npm run conformance && npm run example:harborlight && npm run example:scaffold && npm audit --omit=dev --audit-level=high && npm run pack:core && npm run pack:create-t2k"
   }
 }

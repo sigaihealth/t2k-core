@@ -23,11 +23,12 @@ network, private packs, and customer data are separate products.
 - a server-side REST client for the hosted control plane;
 - an executable reference policy and held-out replay evaluator;
 - per-policy reward aggregation;
-- conformance fixtures and an independently runnable synthetic example.
+- conformance fixtures and an independently runnable synthetic example;
+- a tested `create-t2k` scaffolder for a local governed-decision project.
 
 The public preview does not yet include the Postgres lifecycle runtime, packaged
-MCP adapter, or `create-t2k` scaffolder. Those are tracked in [ROADMAP.md](ROADMAP.md)
-rather than presented as shipped behavior.
+MCP adapter, or persisted promotion and rollback. Those are tracked in
+[ROADMAP.md](ROADMAP.md) rather than presented as shipped behavior.
 
 ## Quick Start
 
@@ -50,6 +51,17 @@ It validates and compiles a fictional field-service ontology, then evaluates a
 challenger against a disjoint 20-episode holdout. Both policies have logged
 action support; the evaluator computes the result rather than accepting caller
 supplied metrics.
+
+After the npm bootstrap release, create an editable project directly:
+
+```bash
+npx create-t2k my-decision-loop
+cd my-decision-loop
+npm start
+```
+
+Until that package is visible on npm, `npm run example:scaffold` exercises the
+same generated project from a clean local tarball during CI.
 
 ## Install the Package
 
@@ -81,7 +93,7 @@ non-normative pre-v1 migration path is documented separately in
 | Specification and schema | Managed semantic registry |
 | Compiler and typed contracts | Multi-tenant Studio operations |
 | Reference policy and replay | Fleet shadow/canary orchestration |
-| Conformance kit and synthetic examples | Private packs and verified fact corpus |
+| Scaffolder, conformance kit, and synthetic examples | Private packs and verified fact corpus |
 | API client | Enterprise identity, connectors, and SLAs |
 
 ## Contributing

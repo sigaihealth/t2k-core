@@ -1,8 +1,12 @@
-# Releasing `@t2kai/core`
+# Releasing the npm packages
 
-Releases are built from the public repository and published by the
-`release-core.yml` GitHub Actions workflow. A release tag must exactly match the
-package version: version `0.1.0` uses tag `core-v0.1.0`.
+Releases are built from the public repository and published by dedicated GitHub
+Actions workflows. Tags must exactly match package versions:
+
+| Package | Workflow | Tag for 0.1.0 |
+| --- | --- | --- |
+| `@t2kai/core` | `release-core.yml` | `core-v0.1.0` |
+| `create-t2k` | `release-create-t2k.yml` | `create-t2k-v0.1.0` |
 
 The npm namespace is `@t2kai`, matching `t2k.ai`. The `@t2k` namespace belongs
 to an unrelated npm user and must not appear in package names or imports.
@@ -12,15 +16,18 @@ to an unrelated npm user and must not appear in package names or imports.
 1. `main` is clean and the intended commit passed Node 20 and 22 CI.
 2. `npm run check` passes from a clean checkout.
 3. `CHANGELOG.md` describes the release.
-4. `packages/core/package.json` contains the intended version.
-5. The npm trusted publisher names `sigaihealth/t2k-core` and workflow file
-   `release-core.yml` with publish permission.
+4. The target workspace `package.json` contains the intended version.
+5. The npm trusted publisher names `sigaihealth/t2k-core`, the package's exact
+   workflow filename, and publish permission.
+6. `@t2kai/core` is published before a `create-t2k` version that depends on it.
 
 ## Publish
 
 ```bash
 git tag -s core-v0.1.0 -m "@t2kai/core 0.1.0"
 git push origin core-v0.1.0
+git tag -s create-t2k-v0.1.0 -m "create-t2k 0.1.0"
+git push origin create-t2k-v0.1.0
 ```
 
 The workflow reruns the scrub, typecheck, tests, conformance suite, Harborlight
@@ -34,6 +41,8 @@ the workflow result:
 npm view @t2kai/core@0.1.0 version dist.integrity dist.tarball --json
 npm install @t2kai/core@0.1.0
 npm audit signatures
+npm view create-t2k@0.1.0 version dist.integrity dist.tarball --json
+npx create-t2k@0.1.0 release-smoke
 ```
 
 ## First-Publish Bootstrap
@@ -43,14 +52,16 @@ For the first release only:
 
 1. Create the free public `t2kai` npm organization and require account 2FA.
 2. Create a short-lived granular publish token with the minimum permissions
-   needed for the initial public package.
+   needed for the two initial public packages.
 3. Store it temporarily as the repository secret `NPM_TOKEN`.
-4. Push `core-v0.1.0` so GitHub Actions performs the provenance-enabled publish.
-5. Configure the package trusted publisher for `sigaihealth/t2k-core`,
-   `release-core.yml`, and publish permission.
-6. Set publishing access to require 2FA and disallow traditional tokens.
+4. Push `core-v0.1.0`, verify it, then push `create-t2k-v0.1.0` so GitHub
+   Actions performs both provenance-enabled publishes in dependency order.
+5. Configure each package's trusted publisher for `sigaihealth/t2k-core`, its
+   exact release workflow, and publish permission.
+6. Set publishing access on both packages to require 2FA and disallow
+   traditional tokens.
 7. Delete the GitHub secret and revoke the bootstrap token.
-8. Remove `NODE_AUTH_TOKEN` from the workflow in the next signed commit.
+8. Remove `NODE_AUTH_TOKEN` from both workflows in the next signed commit.
 
 No long-lived npm write credential should remain after bootstrap.
 
