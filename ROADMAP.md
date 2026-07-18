@@ -12,12 +12,12 @@ Dates are deliberately omitted until maintainers can defend them.
 - Held-out inverse-propensity replay with coverage and guardrail gates
 - Per-policy reward aggregation
 - Conformance fixtures and synthetic Harborlight replay
+- Tested `create-t2k` local project scaffold (npm publication pending)
 
 ## Next
 
 - Local Postgres reference lifecycle for episodes, evaluations, promotion, and rollback
 - Packaged MCP adapter over the same contracts
-- `npx create-t2k` ten-minute local project scaffold
 - More negative conformance fixtures and cross-language test vectors
 - Signed pack artifacts and registry interoperability profile
 

@@ -1,0 +1,45 @@
+{
+  "name": "create-t2k",
+  "version": "0.1.0",
+  "description": "Create a local T2K governed-decision project in minutes.",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ontology",
+    "decision-intelligence",
+    "ai-agents",
+    "scaffolding"
+  ],
+  "homepage": "https://t2k.ai/developers/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sigaihealth/t2k-core.git",
+    "directory": "packages/create-t2k"
+  },
+  "bugs": {
+    "url": "https://github.com/sigaihealth/t2k-core/issues"
+  },
+  "type": "module",
+  "bin": {
+    "create-t2k": "./bin/create-t2k.mjs"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "template",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "pack:check": "npm pack --dry-run",
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "release:verify": "node scripts/verify-release-tag.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

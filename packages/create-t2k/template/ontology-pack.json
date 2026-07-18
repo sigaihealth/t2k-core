@@ -1,0 +1,129 @@
+{
+  "$schema": "https://t2k.ai/schemas/t2k-ontology-pack.v1.schema.json",
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "demo.harborlight-field-service",
+  "label": "Harborlight Field Service",
+  "description": "A fully synthetic ontology pack for a governed dispatch decision loop.",
+  "packKind": "vertical",
+  "status": "review",
+  "scope": {
+    "domain": "field_service",
+    "description": "Synthetic service dispatch operations for the T2K quickstart."
+  },
+  "objectTypes": [
+    {
+      "id": "service_business",
+      "label": "Service business",
+      "family": "Operating organization",
+      "nodeKind": "operating-entity",
+      "purpose": "A fictional field-service operator that dispatches work crews.",
+      "identity": [
+        "business_id"
+      ],
+      "properties": [
+        {
+          "id": "queue_pressure_ratio",
+          "valueType": "number",
+          "required": false,
+          "description": "Open urgent jobs divided by available dispatch capacity.",
+          "authorityDomain": "operations",
+          "temporal": true
+        },
+        {
+          "id": "on_time_completion_rate",
+          "valueType": "number",
+          "required": false,
+          "description": "Share of scheduled work completed inside the promised window.",
+          "authorityDomain": "operations",
+          "temporal": true
+        }
+      ]
+    }
+  ],
+  "decisionTemplates": [
+    {
+      "id": "route_overflow",
+      "question": "How should Harborlight respond to the current dispatch queue pressure?",
+      "decisionType": "operations.dispatch_overflow",
+      "requiredContext": [],
+      "requiredFacts": [
+        "demo.harborlight-field-service:service_business.queue_pressure_ratio"
+      ],
+      "objective": "Protect on-time service while using the least disruptive reversible response.",
+      "successMeasure": "The on-time completion rate improves relative to the pre-decision baseline.",
+      "alternatives": [
+        "hold",
+        "authorize_overtime",
+        "rebalance_route"
+      ],
+      "criteria": [
+        "on_time_completion",
+        "reversibility",
+        "crew_load"
+      ],
+      "comparisonMethod": "reference_rule_set",
+      "policies": [
+        "no_unreviewed_dispatch_change"
+      ],
+      "authority": "dispatch_owner",
+      "riskLevel": "L1",
+      "allowedActionProposals": [
+        "dispatch_plan.apply"
+      ],
+      "rollbackExpectation": "Restore the prior dispatch plan if connector reconciliation fails.",
+      "outcomeMeasures": [
+        "demo.harborlight-field-service:service_business.on_time_completion_rate"
+      ],
+      "reviewHorizon": "Review after the seven-day service window.",
+      "learningContract": {
+        "mode": "supervised_feedback",
+        "stateSchema": {
+          "required": [
+            "facts.0.objectValue"
+          ]
+        },
+        "actionSchema": {
+          "allowed": [
+            "hold",
+            "authorize_overtime",
+            "rebalance_route"
+          ]
+        },
+        "rewardSpec": [
+          {
+            "measureRef": "demo.harborlight-field-service:service_business.on_time_completion_rate",
+            "label": "On-time completion rate",
+            "direction": "maximize",
+            "weight": 1,
+            "required": true,
+            "guardrail": false,
+            "unit": "ratio",
+            "observationWindow": "7d",
+            "aggregation": "latest",
+            "baselineMethod": "explicit",
+            "attributionMethod": "human_review"
+          }
+        ],
+        "observationSchedule": [
+          "7d"
+        ],
+        "terminalConditions": [
+          "Seven-day service window complete"
+        ],
+        "explorationPolicy": {
+          "mode": "none"
+        },
+        "safetyConstraints": [
+          "A human dispatch owner authorizes every action",
+          "Every connector write has a rollback contract and receipt"
+        ],
+        "promotionCriteria": {
+          "minimumPassingReplays": 1,
+          "minimumHeldOutEpisodes": 20
+        }
+      }
+    }
+  ]
+}

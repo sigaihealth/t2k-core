@@ -1,0 +1,31 @@
+# {{PROJECT_NAME}}
+
+This project is a local T2K governed-decision quickstart. Its data is fully
+synthetic.
+
+```bash
+npm install
+npm start
+```
+
+The run performs five explicit steps:
+
+1. validate `ontology-pack.json` against the published T2K schema;
+2. compile the pack and resolve its decision template;
+3. bind accepted facts from `decision-context.json`;
+4. execute baseline and challenger policies;
+5. compute held-out replay evidence and emit a recommendation for human review.
+
+The output is not an autonomous authorization. The generated Decision Context
+requires a `dispatch_owner` to review the evidence and authorize any action.
+
+## Change the example
+
+- Change current facts in `decision-context.json`.
+- Change executable rules in `policies/*.json`.
+- Add observed outcomes to `episodes/holdout.json` without reusing training data.
+- Change concepts and decision contracts in `ontology-pack.json`.
+
+The quickstart uses local files and `@t2kai/core`; it does not send data to a
+hosted service. Persistence, receipts, promotion, and rollback require the
+portable lifecycle runtime or hosted Studio and are not simulated here.

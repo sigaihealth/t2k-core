@@ -12,3 +12,4 @@ rules in the versioned specification.
 - Ontology-pack specification and JSON Schema v1.0.
 - `@t2kai/core` compiler, contracts, client, reference policy, and replay evaluator.
 - Conformance kit and synthetic Harborlight example.
+- `create-t2k` scaffolder with a complete local Decision Context and computed-replay quickstart.

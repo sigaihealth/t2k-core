@@ -1,0 +1,31 @@
+{
+  "contextKey": "harborlight-dispatch-2026-07-18",
+  "decisionType": "operations.dispatch_overflow",
+  "question": "How should Harborlight respond to the current dispatch queue pressure?",
+  "objective": "Protect on-time service while using the least disruptive reversible response.",
+  "facts": [
+    {
+      "claimKey": "harborlight-current-queue-pressure",
+      "subjectRef": "harborlight-service-business",
+      "predicateRef": "demo.harborlight-field-service:service_business.queue_pressure_ratio",
+      "objectValue": 0.78,
+      "status": "accepted",
+      "sourceRefs": [
+        "manual:dispatch-board-2026-07-18"
+      ]
+    }
+  ],
+  "alternatives": [
+    "hold",
+    "authorize_overtime",
+    "rebalance_route"
+  ],
+  "policies": [
+    "no_unreviewed_dispatch_change",
+    "connector_write_requires_rollback"
+  ],
+  "authority": {
+    "requiredRole": "dispatch_owner",
+    "humanReviewRequired": true
+  }
+}

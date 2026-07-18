@@ -19,8 +19,9 @@ npm run check
 ```
 
 `npm run check` runs the scrub guard, typecheck, unit tests, conformance suite,
-synthetic example, dependency audit, package dry-run, and clean-install smoke
-test. A change is not complete until the command passes from a clean checkout.
+synthetic examples, generated-project installation, dependency audit, package
+dry-runs, and clean-install smoke tests. A change is not complete until the
+command passes from a clean checkout.
 
 ## Commit Sign-Off
 

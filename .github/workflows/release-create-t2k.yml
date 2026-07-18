@@ -1,0 +1,35 @@
+name: Release create-t2k
+
+on:
+  push:
+    tags:
+      - "create-t2k-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: npm-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.17.0
+      - run: npm --version
+      - run: npm ci
+      - run: npm run check
+      - run: npm run release:verify --workspace create-t2k
+      - run: npm publish --workspace create-t2k --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
