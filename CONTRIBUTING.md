@@ -56,3 +56,5 @@ whether a proposal requires a new schema minor or major version under
 - Do not commit generated `dist`, tarballs, credentials, or environment files.
 - Expect review to prioritize semantic compatibility and reproducibility over
   convenience coercions.
+
+Maintainer release procedure: [docs/RELEASING.md](docs/RELEASING.md).

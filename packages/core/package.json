@@ -1,5 +1,5 @@
 {
-  "name": "@t2k/core",
+  "name": "@t2kai/core",
   "version": "0.1.0",
   "description": "Contracts, ontology pack compiler, and API client for governed T2K decision systems.",
   "license": "Apache-2.0",

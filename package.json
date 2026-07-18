@@ -10,12 +10,12 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @t2k/core",
-    "typecheck": "npm run typecheck --workspace @t2k/core",
-    "test": "npm run test --workspace @t2k/core",
+    "build": "npm run build --workspace @t2kai/core",
+    "typecheck": "npm run typecheck --workspace @t2kai/core",
+    "test": "npm run test --workspace @t2kai/core",
     "conformance": "npm run build && node conformance/run.mjs",
     "example:harborlight": "npm run build && node examples/harborlight/run.mjs",
-    "pack:core": "npm run build --workspace @t2k/core && npm run pack:check --workspace @t2k/core && npm run smoke:package --workspace @t2k/core",
+    "pack:core": "npm run build --workspace @t2kai/core && npm run pack:check --workspace @t2kai/core && npm run smoke:package --workspace @t2kai/core",
     "scrub": "node scripts/scrub-check.mjs",
     "check": "npm run scrub && npm run typecheck && npm test && npm run conformance && npm run example:harborlight && npm audit --omit=dev --audit-level=high && npm run pack:core"
   }

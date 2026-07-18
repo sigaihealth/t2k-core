@@ -18,7 +18,7 @@ The script:
 2. compiles the pack and prints its deterministic resolution hash;
 3. keeps four synthetic training IDs disjoint from 20 held-out episodes;
 4. gives both baseline and challenger logged-action support;
-5. computes replay metrics and paired confidence bounds in `@t2k/core`;
+5. computes replay metrics and paired confidence bounds in `@t2kai/core`;
 6. fails if the challenger lacks coverage, a positive lower bound, or a passing verdict.
 
 This public preview demonstrates the portable semantic and evaluation layer.

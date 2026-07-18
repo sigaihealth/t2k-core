@@ -15,4 +15,4 @@ if (actualTag !== expectedTag) {
   process.exit(1);
 }
 
-console.log(`Release tag ${actualTag} matches @t2k/core ${manifest.version}.`);
+console.log(`Release tag ${actualTag} matches @t2kai/core ${manifest.version}.`);
