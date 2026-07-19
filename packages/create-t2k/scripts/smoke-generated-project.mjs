@@ -44,6 +44,18 @@ try {
   if (!output.includes('"status": "passed"')) {
     throw new Error("Generated project did not produce a passing computed replay.");
   }
+  if (process.env.T2K_TEST_DATABASE_URL) {
+    const lifecycleOutput = execFileSync("npm", ["run", "lifecycle"], {
+      cwd: project.targetPath,
+      encoding: "utf8",
+    });
+    if (
+      !lifecycleOutput.includes('"exactParentRestored": true') ||
+      !lifecycleOutput.includes('"executionReceipts": 24')
+    ) {
+      throw new Error("Generated project did not complete its persisted lifecycle.");
+    }
+  }
   console.log("Generated create-t2k project installed and ran successfully.");
 } finally {
   await fs.rm(smokeRoot, { recursive: true, force: true });

@@ -32,6 +32,7 @@ test("scaffolds the complete local decision project", async (context) => {
   const expectedFiles = [
     ".gitignore",
     "README.md",
+    "compose.yml",
     "decision-context.json",
     "episodes/holdout.json",
     "ontology-pack.json",
@@ -39,6 +40,7 @@ test("scaffolds the complete local decision project", async (context) => {
     "policies/baseline.json",
     "policies/candidate.json",
     "src/run.mjs",
+    "src/lifecycle.mjs",
   ];
   for (const relativePath of expectedFiles) {
     await fs.access(path.join(result.targetPath, relativePath));
@@ -47,8 +49,9 @@ test("scaffolds the complete local decision project", async (context) => {
     await fs.readFile(path.join(result.targetPath, "package.json"), "utf8")
   );
   assert.equal(manifest.name, "harborlight-demo");
-  assert.equal(manifest.dependencies["@t2kai/core"], "^0.1.0");
+  assert.equal(manifest.dependencies["@t2kai/core"], "^0.2.0");
   assert.match(output.join(""), /human must still authorize/i);
+  assert.match(output.join(""), /persisted closed loop/i);
 });
 
 test("refuses to overwrite a non-empty directory", async (context) => {

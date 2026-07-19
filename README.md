@@ -22,13 +22,14 @@ network, private packs, and customer data are separate products.
 - typed graph, claim, decision, execution, observation, and learning contracts;
 - a server-side REST client for the hosted control plane;
 - an executable reference policy and held-out replay evaluator;
-- per-policy reward aggregation;
+- deterministic reward computation and per-policy aggregation;
+- a Postgres reference lifecycle with frozen contexts, authorization, execution
+  receipts, observations, promotion, exact rollback, and a hash-chained ledger;
 - conformance fixtures and an independently runnable synthetic example;
 - a tested `create-t2k` scaffolder for a local governed-decision project.
 
-The public preview does not yet include the Postgres lifecycle runtime, packaged
-MCP adapter, or persisted promotion and rollback. Those are tracked in
-[ROADMAP.md](ROADMAP.md) rather than presented as shipped behavior.
+The public runtime does not yet include the packaged MCP adapter. That and other
+unshipped work are tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Quick Start
 
@@ -52,12 +53,31 @@ challenger against a disjoint 20-episode holdout. Both policies have logged
 action support; the evaluator computes the result rather than accepting caller
 supplied metrics.
 
+Run the same example through the persisted closed loop:
+
+```bash
+docker compose -f examples/harborlight/compose.yml up -d --wait
+npm run example:harborlight:lifecycle
+docker compose -f examples/harborlight/compose.yml down -v
+```
+
+This records 24 authorized episodes with reconciled execution receipts and
+observed outcomes, computes held-out replay, promotes the candidate through an
+independent human role, and proves exact rollback.
+
 Create an editable local decision project directly from npm:
 
 ```bash
 npx create-t2k@latest my-decision-loop
 cd my-decision-loop
 npm start
+```
+
+The generated project includes the same optional local lifecycle:
+
+```bash
+npm run db:up
+npm run lifecycle
 ```
 
 Contributors can run `npm run example:scaffold` to exercise the same generated
@@ -79,6 +99,7 @@ import {
   validateOntologyPackManifest,
 } from "@t2kai/core";
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
+import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
 See [packages/core/README.md](packages/core/README.md) for API examples and
@@ -92,7 +113,7 @@ non-normative pre-v1 migration path is documented separately in
 | --- | --- |
 | Specification and schema | Managed semantic registry |
 | Compiler and typed contracts | Multi-tenant Studio operations |
-| Reference policy and replay | Fleet shadow/canary orchestration |
+| Reference policy, reward, replay, and local Postgres lifecycle | Fleet shadow/canary orchestration |
 | Scaffolder, conformance kit, and synthetic examples | Private packs and verified fact corpus |
 | API client | Enterprise identity, connectors, and SLAs |
 

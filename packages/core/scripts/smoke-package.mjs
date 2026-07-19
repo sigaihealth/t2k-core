@@ -15,6 +15,7 @@ const smokeRoot = await mkdtemp(path.join(tmpdir(), "t2k-core-smoke-"));
 const smokeProgram = String.raw`
 import { T2kClient, parseOntologyPackManifest } from "@t2kai/core";
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
+import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 import { readFile } from "node:fs/promises";
 
 const manifest = {
@@ -71,6 +72,7 @@ if (
   compiled.status !== "valid" ||
   compiled.packs.length !== 1 ||
   schema.title !== "T2K Ontology Pack Manifest" ||
+  typeof PostgresReferenceLifecycle !== "function" ||
   !client
 ) {
   throw new Error("Installed package did not satisfy the public contract.");

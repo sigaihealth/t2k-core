@@ -15,9 +15,21 @@ Dates are deliberately omitted until maintainers can defend them.
 - Provenance-backed `@t2kai/core@0.1.0` and `create-t2k@0.1.0` npm releases
 - Tested `create-t2k` local project scaffold and public `npx` quickstart
 
+## Shipped in 0.2
+
+- Deterministic reward-vector assessment with guardrail-blocked scalarization
+- Local Postgres reference schema and transactional lifecycle API
+- Frozen Decision Context policy bindings and computed recommendations
+- Human authorization and segregation of duties across review transitions
+- Reconciled execution receipts with mandatory rollback contracts
+- Provenance-bearing observations, computed rewards, and closed episodes
+- Disjoint held-out replay, candidate promotion, exact rollback, and active policy lookup
+- Non-weakenable evaluation gates and atomic or staged promotion deployment
+- Hash-chained, append-only lifecycle event ledger with verification
+- Persisted Harborlight and `create-t2k` golden paths tested on PostgreSQL 16
+
 ## Next
 
-- Local Postgres reference lifecycle for episodes, evaluations, promotion, and rollback
 - Packaged MCP adapter over the same contracts
 - More negative conformance fixtures and cross-language test vectors
 - Signed pack artifacts and registry interoperability profile

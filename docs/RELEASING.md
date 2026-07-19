@@ -3,10 +3,10 @@
 Releases are built from the public repository and published by dedicated GitHub
 Actions workflows. Tags must exactly match package versions:
 
-| Package | Workflow | Tag for 0.1.0 |
+| Package | Workflow | Tag pattern |
 | --- | --- | --- |
-| `@t2kai/core` | `release-core.yml` | `core-v0.1.0` |
-| `create-t2k` | `release-create-t2k.yml` | `create-t2k-v0.1.0` |
+| `@t2kai/core` | `release-core.yml` | `core-vX.Y.Z` |
+| `create-t2k` | `release-create-t2k.yml` | `create-t2k-vX.Y.Z` |
 
 The npm namespace is `@t2kai`, matching `t2k.ai`. The `@t2k` namespace belongs
 to an unrelated npm user and must not appear in package names or imports.
@@ -15,34 +15,36 @@ to an unrelated npm user and must not appear in package names or imports.
 
 1. `main` is clean and the intended commit passed Node 20 and 22 CI.
 2. `npm run check` passes from a clean checkout.
-3. `CHANGELOG.md` describes the release.
-4. The target workspace `package.json` contains the intended version.
-5. The npm trusted publisher names `sigaihealth/t2k-core`, the package's exact
+3. `T2K_TEST_DATABASE_URL=... npm run check:postgres` passes against PostgreSQL 16.
+4. `CHANGELOG.md` describes the release.
+5. The target workspace `package.json` contains the intended version.
+6. The npm trusted publisher names `sigaihealth/t2k-core`, the package's exact
    workflow filename, and publish permission.
-6. `@t2kai/core` is published before a `create-t2k` version that depends on it.
+7. `@t2kai/core` is published before a `create-t2k` version that depends on it.
 
 ## Publish
 
 ```bash
-git tag -s core-v0.1.0 -m "@t2kai/core 0.1.0"
-git push origin core-v0.1.0
-git tag -s create-t2k-v0.1.0 -m "create-t2k 0.1.0"
-git push origin create-t2k-v0.1.0
+git tag -s core-vX.Y.Z -m "@t2kai/core X.Y.Z"
+git push origin core-vX.Y.Z
+git tag -s create-t2k-vX.Y.Z -m "create-t2k X.Y.Z"
+git push origin create-t2k-vX.Y.Z
 ```
 
-The workflow reruns the scrub, typecheck, tests, conformance suite, Harborlight
-replay, dependency audit, and package smoke test before publishing. npm
-provenance links the registry artifact to the exact public commit and workflow.
+The workflow reruns the scrub, typecheck, tests, conformance suite, both
+Harborlight paths, generated-project lifecycle, dependency audit, and package
+smoke test against PostgreSQL 16 before publishing. npm provenance links the
+registry artifact to the exact public commit and workflow.
 
 After the workflow succeeds, verify the registry rather than relying only on
 the workflow result:
 
 ```bash
-npm view @t2kai/core@0.1.0 version dist.integrity dist.tarball --json
-npm install @t2kai/core@0.1.0
+npm view @t2kai/core@X.Y.Z version dist.integrity dist.tarball --json
+npm install @t2kai/core@X.Y.Z
 npm audit signatures
-npm view create-t2k@0.1.0 version dist.integrity dist.tarball --json
-npx create-t2k@0.1.0 release-smoke
+npm view create-t2k@X.Y.Z version dist.integrity dist.tarball --json
+npx create-t2k@X.Y.Z release-smoke
 ```
 
 ## First-Publish Bootstrap

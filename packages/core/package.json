@@ -1,6 +1,6 @@
 {
   "name": "@t2kai/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Contracts, ontology pack compiler, and API client for governed T2K decision systems.",
   "license": "Apache-2.0",
   "keywords": [
@@ -39,6 +39,11 @@
       "import": "./dist/compiler.js",
       "default": "./dist/compiler.js"
     },
+    "./postgres": {
+      "types": "./dist/reference-postgres.d.ts",
+      "import": "./dist/reference-postgres.js",
+      "default": "./dist/reference-postgres.js"
+    },
     "./schema/t2k-ontology-pack.v1.json": "./dist/schema/t2k-ontology-pack.v1.schema.json",
     "./package.json": "./package.json"
   },
@@ -57,10 +62,12 @@
     "release:verify": "node scripts/verify-release-tag.mjs"
   },
   "dependencies": {
-    "ajv": "^8.17.1"
+    "ajv": "^8.17.1",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
+    "@types/pg": "^8.15.5",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   },
