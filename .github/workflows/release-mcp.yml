@@ -1,0 +1,50 @@
+name: Release T2K MCP
+
+on:
+  push:
+    tags:
+      - "mcp-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: t2k_reference_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d t2k_reference_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+        ports:
+          - 5432:5432
+    concurrency:
+      group: npm-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.17.0
+      - run: npm --version
+      - run: npm ci
+      - run: npm run check
+      - run: npm run check:postgres
+        env:
+          T2K_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/t2k_reference_test
+      - run: npm run release:verify --workspace @t2kai/mcp
+      - run: npm publish --workspace @t2kai/mcp --access public --provenance

@@ -28,9 +28,16 @@ Dates are deliberately omitted until maintainers can defend them.
 - Hash-chained, append-only lifecycle event ledger with verification
 - Persisted Harborlight and `create-t2k` golden paths tested on PostgreSQL 16
 
+## Shipped in `@t2kai/mcp` 0.1
+
+- Local stdio adapter over the same public compiler, policy, replay, reward, and lifecycle contracts
+- Database-free semantic mode and optional lifecycle read-only mode
+- Explicit agent-mutation mode bound to one server-configured agent identity
+- Deliberate exclusion of human approval, authorization, closure, evaluation, promotion, deployment, and rollback tools
+- Protocol-level boundary tests, PostgreSQL integration coverage, and clean-tarball stdio smoke test
+
 ## Next
 
-- Packaged MCP adapter over the same contracts
 - More negative conformance fixtures and cross-language test vectors
 - Signed pack artifacts and registry interoperability profile
 

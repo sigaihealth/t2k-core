@@ -6,6 +6,7 @@ Actions workflows. Tags must exactly match package versions:
 | Package | Workflow | Tag pattern |
 | --- | --- | --- |
 | `@t2kai/core` | `release-core.yml` | `core-vX.Y.Z` |
+| `@t2kai/mcp` | `release-mcp.yml` | `mcp-vX.Y.Z` |
 | `create-t2k` | `release-create-t2k.yml` | `create-t2k-vX.Y.Z` |
 
 The npm namespace is `@t2kai`, matching `t2k.ai`. The `@t2k` namespace belongs
@@ -21,12 +22,15 @@ to an unrelated npm user and must not appear in package names or imports.
 6. The npm trusted publisher names `sigaihealth/t2k-core`, the package's exact
    workflow filename, and publish permission.
 7. `@t2kai/core` is published before a `create-t2k` version that depends on it.
+8. `@t2kai/core` is published before an `@t2kai/mcp` version that depends on it.
 
 ## Publish
 
 ```bash
 git tag -s core-vX.Y.Z -m "@t2kai/core X.Y.Z"
 git push origin core-vX.Y.Z
+git tag -s mcp-vX.Y.Z -m "@t2kai/mcp X.Y.Z"
+git push origin mcp-vX.Y.Z
 git tag -s create-t2k-vX.Y.Z -m "create-t2k X.Y.Z"
 git push origin create-t2k-vX.Y.Z
 ```
@@ -43,6 +47,8 @@ the workflow result:
 npm view @t2kai/core@X.Y.Z version dist.integrity dist.tarball --json
 npm install @t2kai/core@X.Y.Z
 npm audit signatures
+npm view @t2kai/mcp@X.Y.Z version dist.integrity dist.tarball --json
+npx -y @t2kai/mcp@X.Y.Z --help
 npm view create-t2k@X.Y.Z version dist.integrity dist.tarball --json
 npx create-t2k@X.Y.Z release-smoke
 ```
