@@ -19,6 +19,29 @@ The run performs five explicit steps:
 The output is not an autonomous authorization. The generated Decision Context
 requires a `dispatch_owner` to review the evidence and authorize any action.
 
+## Run the complete persisted loop
+
+Start the included PostgreSQL 16 service, then execute the lifecycle:
+
+```bash
+npm run db:up
+npm run lifecycle
+```
+
+This path persists 24 synthetic episodes and proves the full sequence:
+
+```text
+context -> recommendation -> human authorization -> execution receipt
+        -> observation -> computed reward -> held-out replay
+        -> human promotion -> exact rollback
+```
+
+The actors who propose, evaluate, promote, and roll back are deliberately
+separate synthetic identities. The event ledger is hash-chained and append-only.
+In production, authenticate those actor IDs and enforce organization roles in
+the calling service; the local runtime is not an identity provider. To remove
+the local database and its volume, run `npm run db:down`.
+
 ## Change the example
 
 - Change current facts in `decision-context.json`.
@@ -26,6 +49,7 @@ requires a `dispatch_owner` to review the evidence and authorize any action.
 - Add observed outcomes to `episodes/holdout.json` without reusing training data.
 - Change concepts and decision contracts in `ontology-pack.json`.
 
-The quickstart uses local files and `@t2kai/core`; it does not send data to a
-hosted service. Persistence, receipts, promotion, and rollback require the
-portable lifecycle runtime or hosted Studio and are not simulated here.
+The quickstart uses local files, local PostgreSQL, and `@t2kai/core`; it does not
+send data to a hosted service. Set `T2K_DATABASE_URL` to use another Postgres
+database. Use a dedicated database because the runtime owns the
+`t2k_reference` schema.

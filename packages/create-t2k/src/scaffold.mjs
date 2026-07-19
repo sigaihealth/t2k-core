@@ -170,6 +170,7 @@ export async function scaffoldProject({
   }
   stdout.write("  npm start\n\n");
   stdout.write("The first run computes a recommendation; a human must still authorize it.\n");
+  stdout.write("Run `npm run db:up && npm run lifecycle` for the persisted closed loop.\n");
 
   return { targetPath, projectName };
 }

@@ -52,10 +52,14 @@ try {
   );
   if (
     generatedManifest.name !== "generated-project" ||
-    generatedManifest.dependencies?.["@t2kai/core"] !== "^0.1.0"
+    generatedManifest.dependencies?.["@t2kai/core"] !== "^0.2.0"
   ) {
     throw new Error("Packed create-t2k did not generate the expected project.");
   }
+  await Promise.all([
+    fs.access(path.join(generatedPath, "compose.yml")),
+    fs.access(path.join(generatedPath, "src/lifecycle.mjs")),
+  ]);
   console.log("Packed create-t2k binary smoke test passed.");
 } finally {
   await fs.rm(smokeRoot, { recursive: true, force: true });

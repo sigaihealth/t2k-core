@@ -21,7 +21,21 @@ The script:
 5. computes replay metrics and paired confidence bounds in `@t2kai/core`;
 6. fails if the challenger lacks coverage, a positive lower bound, or a passing verdict.
 
-This public preview demonstrates the portable semantic and evaluation layer.
-Episode persistence, authorization, execution receipts, promotion, and rollback
-remain part of the hosted lifecycle until the local Postgres reference runtime
-lands on the public roadmap.
+## Run the persisted lifecycle
+
+Docker Compose provides a disposable PostgreSQL 16 database:
+
+```bash
+docker compose -f examples/harborlight/compose.yml up -d --wait
+npm run example:harborlight:lifecycle
+docker compose -f examples/harborlight/compose.yml down -v
+```
+
+The persisted example migrates the reference schema and closes 24 synthetic
+episodes. Every action has independent human authorization, a reconciled
+execution receipt with a rollback contract, a provenance-bearing observation,
+and a computed reward. It then evaluates a candidate on 20 disjoint held-out
+episodes, promotes it, and restores the exact prior version through rollback.
+
+Set `T2K_DATABASE_URL` to use an existing database instead of Compose. The
+runtime writes only to the `t2k_reference` schema and does not delete prior runs.

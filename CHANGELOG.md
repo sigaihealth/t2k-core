@@ -6,6 +6,25 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-18
+
+### Added
+
+- Deterministic reward assessment with incomplete and guardrail-violation states.
+- Guardrail-blocked business scalarization with an explicit worst-case replay penalty.
+- Postgres reference lifecycle for policy versions, frozen Decision Contexts,
+  recommendations, human authorization, episodes, receipts, observations, and rewards.
+- Computed held-out replay, independent promotion, active-version deployment, and exact rollback.
+- Append-only hash-chained lifecycle events and chain verification.
+- Deployed-contract matching, non-weakenable candidate gates, monotonic policy
+  versions, deterministic content hashes, and staged promotion deployment.
+- PostgreSQL 16 integration coverage and persisted Harborlight and `create-t2k` examples.
+
+### Changed
+
+- The generated project now includes an optional local Postgres service and
+  `npm run lifecycle` golden path while preserving the file-only `npm start` path.
+
 ## [0.1.0] - 2026-07-18
 
 ### Added

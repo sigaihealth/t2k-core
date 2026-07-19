@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: t2k_reference
+      POSTGRES_PASSWORD: t2k
+      POSTGRES_USER: t2k
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U t2k -d t2k_reference"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    ports:
+      - "55432:5432"
+    volumes:
+      - t2k-reference-data:/var/lib/postgresql/data
+
+volumes:
+  t2k-reference-data:

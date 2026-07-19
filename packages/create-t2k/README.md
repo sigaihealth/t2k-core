@@ -14,6 +14,18 @@ baseline and challenger policies against the current facts, computes a held-out
 replay comparison, and emits a recommendation that still requires explicit
 human authorization.
 
+The generated project also includes a PostgreSQL 16 Compose service and a
+persisted golden path:
+
+```bash
+npm run db:up
+npm run lifecycle
+```
+
+That command records authorization, execution receipts, observations, computed
+rewards, held-out evaluation, independent promotion, and exact rollback in the
+open reference runtime.
+
 Use `--no-install` to generate files without running `npm install`:
 
 ```bash
