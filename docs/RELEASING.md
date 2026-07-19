@@ -60,18 +60,19 @@ for both packages. The one-time process was:
 5. Verify each registry tarball, its signature audit, and the generated-project
    smoke test before removing the bootstrap credential.
 
-The temporary GitHub secret has been removed and the release workflows contain
-no long-lived npm credential. Before another release, an npm organization owner
-must complete these package settings:
+The bootstrap hardening also completed on 2026-07-18:
 
-1. Configure the `@t2kai/core` trusted publisher for repository
-   `sigaihealth/t2k-core` and workflow `release-core.yml`.
-2. Configure the `create-t2k` trusted publisher for the same repository and
-   workflow `release-create-t2k.yml`.
-3. Require 2FA and disallow traditional tokens for both packages.
-4. Revoke the short-lived bootstrap token from the npm account.
+1. `@t2kai/core` trusts `sigaihealth/t2k-core` workflow `release-core.yml` for
+   `npm publish`.
+2. `create-t2k` trusts the same repository's `release-create-t2k.yml` workflow
+   for `npm publish`.
+3. Both packages require 2FA and disallow traditional publishing tokens.
+4. The temporary GitHub secret and bootstrap npm token were removed, and the
+   release workflows contain no long-lived npm credential.
 
-Until those trust relationships exist, later release workflows fail closed.
+Later release workflows authenticate with short-lived GitHub OIDC credentials
+and fail closed if their repository or workflow identity does not match these
+package-level trust relationships.
 
 ## Failed Releases
 
