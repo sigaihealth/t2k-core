@@ -26,6 +26,23 @@ That command records authorization, execution receipts, observations, computed
 rewards, held-out evaluation, independent promotion, and exact rollback in the
 open reference runtime.
 
+To expose the same local semantic operations to an MCP host, add:
+
+```json
+{
+  "mcpServers": {
+    "t2k": {
+      "command": "npx",
+      "args": ["-y", "@t2kai/mcp@latest"]
+    }
+  }
+}
+```
+
+This starts read-only and does not send project data to a hosted service. See
+the [`@t2kai/mcp` guide](https://github.com/sigaihealth/t2k-core/blob/main/packages/mcp/README.md)
+before enabling database access or agent writes.
+
 Use `--no-install` to generate files without running `npm install`:
 
 ```bash

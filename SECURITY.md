@@ -26,7 +26,14 @@ recognition. Please allow a reasonable remediation window before disclosure.
 
 Reports about schema validation bypasses, unsafe policy paths, dependency
 resolution ambiguity, semantic-hash inconsistencies, client credential leakage,
-or package supply-chain integrity are in scope.
+package supply-chain integrity, MCP actor-identity override, MCP mode escalation,
+or exposure of human-only lifecycle transitions are in scope.
+
+`@t2kai/mcp` is read-only by default. Its optional mutation mode must use a
+fixed server-configured agent identity and deliberately omits every operation
+that asserts human approval, authorization, closure, evaluation, promotion,
+deployment, or rollback. Treat any path that lets tool input override that
+identity or invoke those transitions as a security vulnerability.
 
 The hosted T2K service has a separate operational security boundary. Include
 the affected URL in your report so it can be routed correctly.

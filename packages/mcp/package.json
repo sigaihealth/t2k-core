@@ -1,0 +1,70 @@
+{
+  "name": "@t2kai/mcp",
+  "version": "0.1.0",
+  "description": "A safe local MCP adapter for the open T2K governed-decision runtime.",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mcp",
+    "ontology",
+    "decision-intelligence",
+    "ai-agents",
+    "governance"
+  ],
+  "homepage": "https://t2k.ai/developers/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sigaihealth/t2k-core.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/sigaihealth/t2k-core/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "bin": {
+    "t2k-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "prebuild": "npm run build --workspace @t2kai/core",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "pretypecheck": "npm run build --workspace @t2kai/core",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build --workspace @t2kai/core",
+    "test": "vitest run",
+    "pack:check": "npm pack --dry-run",
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "release:verify": "node scripts/verify-release-tag.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@t2kai/core": "^0.2.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

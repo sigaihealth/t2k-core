@@ -42,6 +42,26 @@ In production, authenticate those actor IDs and enforce organization roles in
 the calling service; the local runtime is not an identity provider. To remove
 the local database and its volume, run `npm run db:down`.
 
+## Connect an MCP host
+
+Expose validation, compilation, policy execution, replay, and reward evaluation
+to an MCP host with the safe database-free mode:
+
+```json
+{
+  "mcpServers": {
+    "t2k": {
+      "command": "npx",
+      "args": ["-y", "@t2kai/mcp@latest"]
+    }
+  }
+}
+```
+
+The MCP server does not expose human authorization or promotion operations.
+Read <https://t2k.ai/developers/> before enabling its optional Postgres or agent
+mutation modes.
+
 ## Change the example
 
 - Change current facts in `decision-context.json`.

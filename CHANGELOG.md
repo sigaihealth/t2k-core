@@ -6,6 +6,16 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+### Added
+
+- `@t2kai/mcp@0.1.0`, a local stdio adapter for ontology-pack validation and
+  compilation, reference policy/replay/reward computation, and the optional
+  Postgres lifecycle.
+- Safe default and read-only lifecycle modes, with an explicit agent-mutation
+  mode tied to one configured actor ID.
+- Protocol tests and package smoke coverage that prove human-governance
+  transitions are never exposed to an MCP agent.
+
 ## [0.2.0] - 2026-07-18
 
 ### Added

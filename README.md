@@ -26,10 +26,9 @@ network, private packs, and customer data are separate products.
 - a Postgres reference lifecycle with frozen contexts, authorization, execution
   receipts, observations, promotion, exact rollback, and a hash-chained ledger;
 - conformance fixtures and an independently runnable synthetic example;
-- a tested `create-t2k` scaffolder for a local governed-decision project.
-
-The public runtime does not yet include the packaged MCP adapter. That and other
-unshipped work are tracked in [ROADMAP.md](ROADMAP.md).
+- a tested `create-t2k` scaffolder for a local governed-decision project;
+- a safe local stdio MCP adapter with read-only defaults, a fixed agent identity
+  for opt-in writes, and no agent-accessible human-governance transitions.
 
 ## Quick Start
 
@@ -83,13 +82,31 @@ npm run lifecycle
 Contributors can run `npm run example:scaffold` to exercise the same generated
 project from a clean local tarball during CI.
 
-## Install the Package
+Connect an MCP host without a database or credentials:
+
+```json
+{
+  "mcpServers": {
+    "t2k": {
+      "command": "npx",
+      "args": ["-y", "@t2kai/mcp@latest"]
+    }
+  }
+}
+```
+
+This safe default exposes ontology validation and compilation plus reference
+policy, replay, and reward computation. See [docs/MCP.md](docs/MCP.md) before
+enabling lifecycle persistence or agent writes.
+
+## Install the Packages
 
 The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
 npm install @t2kai/core
+npm install @t2kai/mcp
 ```
 
 ```ts
@@ -103,6 +120,7 @@ import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
 See [packages/core/README.md](packages/core/README.md) for API examples and
+[packages/mcp/README.md](packages/mcp/README.md) for MCP modes and security, and
 [spec/v1.0/README.md](spec/v1.0/README.md) for the normative contract. The
 non-normative pre-v1 migration path is documented separately in
 [COMPATIBILITY.md](COMPATIBILITY.md).
@@ -114,7 +132,7 @@ non-normative pre-v1 migration path is documented separately in
 | Specification and schema | Managed semantic registry |
 | Compiler and typed contracts | Multi-tenant Studio operations |
 | Reference policy, reward, replay, and local Postgres lifecycle | Fleet shadow/canary orchestration |
-| Scaffolder, conformance kit, and synthetic examples | Private packs and verified fact corpus |
+| Scaffolder, local MCP adapter, conformance kit, and synthetic examples | Private packs and verified fact corpus |
 | API client | Enterprise identity, connectors, and SLAs |
 
 ## Contributing
