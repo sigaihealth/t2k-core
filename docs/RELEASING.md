@@ -48,7 +48,8 @@ npx create-t2k@0.1.0 release-smoke
 ## First-Publish Bootstrap
 
 npm requires a package to exist before its trusted publisher can be configured.
-For the first release only:
+The bootstrap completed on 2026-07-18 with provenance-backed `0.1.0` releases
+for both packages. The one-time process was:
 
 1. Create the free public `t2kai` npm organization and require account 2FA.
 2. Create a short-lived granular publish token with the minimum permissions
@@ -56,14 +57,21 @@ For the first release only:
 3. Store it temporarily as the repository secret `NPM_TOKEN`.
 4. Push `core-v0.1.0`, verify it, then push `create-t2k-v0.1.0` so GitHub
    Actions performs both provenance-enabled publishes in dependency order.
-5. Configure each package's trusted publisher for `sigaihealth/t2k-core`, its
-   exact release workflow, and publish permission.
-6. Set publishing access on both packages to require 2FA and disallow
-   traditional tokens.
-7. Delete the GitHub secret and revoke the bootstrap token.
-8. Remove `NODE_AUTH_TOKEN` from both workflows in the next signed commit.
+5. Verify each registry tarball, its signature audit, and the generated-project
+   smoke test before removing the bootstrap credential.
 
-No long-lived npm write credential should remain after bootstrap.
+The temporary GitHub secret has been removed and the release workflows contain
+no long-lived npm credential. Before another release, an npm organization owner
+must complete these package settings:
+
+1. Configure the `@t2kai/core` trusted publisher for repository
+   `sigaihealth/t2k-core` and workflow `release-core.yml`.
+2. Configure the `create-t2k` trusted publisher for the same repository and
+   workflow `release-create-t2k.yml`.
+3. Require 2FA and disallow traditional tokens for both packages.
+4. Revoke the short-lived bootstrap token from the npm account.
+
+Until those trust relationships exist, later release workflows fail closed.
 
 ## Failed Releases
 

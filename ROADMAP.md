@@ -12,7 +12,8 @@ Dates are deliberately omitted until maintainers can defend them.
 - Held-out inverse-propensity replay with coverage and guardrail gates
 - Per-policy reward aggregation
 - Conformance fixtures and synthetic Harborlight replay
-- Tested `create-t2k` local project scaffold (npm publication pending)
+- Provenance-backed `@t2kai/core@0.1.0` and `create-t2k@0.1.0` npm releases
+- Tested `create-t2k` local project scaffold and public `npx` quickstart
 
 ## Next
 

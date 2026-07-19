@@ -31,5 +31,3 @@ jobs:
       - run: npm run check
       - run: npm run release:verify --workspace @t2kai/core
       - run: npm publish --workspace @t2kai/core --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -31,5 +31,3 @@ jobs:
       - run: npm run check
       - run: npm run release:verify --workspace create-t2k
       - run: npm publish --workspace create-t2k --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
