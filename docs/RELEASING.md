@@ -82,6 +82,21 @@ Later release workflows authenticate with short-lived GitHub OIDC credentials
 and fail closed if their repository or workflow identity does not match these
 package-level trust relationships.
 
+The MCP package completed its separate bootstrap on 2026-07-18:
+
+1. `@t2kai/mcp@0.1.0` was created through interactive npm web authentication;
+   no npm token or repository secret was introduced.
+2. A clean registry install verified the executable, five-tool safe default,
+   live stdio call, vulnerability audit, and registry signatures.
+3. The package now trusts only `sigaihealth/t2k-core` workflow
+   `release-mcp.yml` for automated `npm publish` operations.
+4. Package publishing requires 2FA and disallows traditional publish tokens.
+
+Because npm cannot configure a trusted publisher before a package exists, the
+bootstrap `0.1.0` artifact has a registry signature but no GitHub provenance
+attestation. Every later MCP release uses the OIDC workflow and receives
+automatic provenance.
+
 ## Failed Releases
 
 Do not move or reuse a published version. Fix the cause, increment the package

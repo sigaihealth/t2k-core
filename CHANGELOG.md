@@ -6,6 +6,8 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [`@t2kai/mcp` 0.1.0] - 2026-07-18
+
 ### Added
 
 - `@t2kai/mcp@0.1.0`, a local stdio adapter for ontology-pack validation and
