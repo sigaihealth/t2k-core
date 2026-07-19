@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg";
 
+import { compareCanonicalStrings } from "./compiler.js";
 import {
   aggregatePolicyRewards,
   evaluateReferencePolicy,
@@ -312,7 +313,7 @@ function stableValue(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value)
         .filter(([, item]) => item !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => compareCanonicalStrings(left, right))
         .map(([key, item]) => [key, stableValue(item)])
     );
   }
@@ -361,7 +362,7 @@ function compareSemanticVersions(left: string, right: string) {
       return Math.sign(Number(leftPart) - Number(rightPart));
     }
     if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
-    return leftPart.localeCompare(rightPart) < 0 ? -1 : 1;
+    return compareCanonicalStrings(leftPart, rightPart);
   }
   return 0;
 }

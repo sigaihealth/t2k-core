@@ -406,9 +406,18 @@ const ONTOLOGY_PACK_KINDS = new Set<OntologyPackKind>([
   "project",
 ]);
 
+export interface ParseOntologyPackManifestOptions {
+  /**
+   * Parse a T2K manifest that was persisted before schema enforcement shipped.
+   * New manifests must never enable this compatibility path.
+   */
+  allowLegacyT2kSchema?: boolean;
+}
+
 /** Normalize a current T2K manifest or supported TransferOS legacy manifest. */
 export function parseOntologyPackManifest(
-  value: unknown
+  value: unknown,
+  options: ParseOntologyPackManifestOptions = {}
 ): OntologyPackManifest | null {
   if (!isRecord(value)) {
     return null;
@@ -421,7 +430,7 @@ export function parseOntologyPackManifest(
     return null;
   }
 
-  if (manifestType) {
+  if (manifestType && !options.allowLegacyT2kSchema) {
     const validation = validateOntologyPackManifest(value);
     if (!validation.valid) {
       return null;

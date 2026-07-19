@@ -78,6 +78,8 @@ export interface CompileOntologyPackSetInput {
   manifests: unknown[];
   roots: OntologyPackRequirement[];
   contextValues?: Record<string, unknown>;
+  /** Indexes of persisted manifests accepted before strict schema validation. */
+  legacyManifestIndexes?: number[];
 }
 
 interface SemanticVersion {
@@ -85,6 +87,10 @@ interface SemanticVersion {
   minor: number;
   patch: number;
   prerelease: string | null;
+}
+
+export function compareCanonicalStrings(left: string, right: string) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function stableJsonValue(value: unknown): JsonValue {
@@ -103,7 +109,7 @@ function stableJsonValue(value: unknown): JsonValue {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => compareCanonicalStrings(left, right))
         .map(([key, item]) => [key, stableJsonValue(item)])
     );
   }
@@ -141,7 +147,7 @@ function compareSemanticVersions(left: string, right: string) {
   const parsedRight = parseSemanticVersion(right);
 
   if (!parsedLeft || !parsedRight) {
-    return left.localeCompare(right);
+    return compareCanonicalStrings(left, right);
   }
 
   return compareParsedVersion(parsedLeft, parsedRight);
@@ -171,7 +177,7 @@ function comparePrereleaseIdentifiers(left: string, right: string) {
     }
     if (leftNumeric) return -1;
     if (rightNumeric) return 1;
-    return leftPart.localeCompare(rightPart);
+    return compareCanonicalStrings(leftPart, rightPart);
   }
 
   return 0;
@@ -797,6 +803,7 @@ export function compileOntologyPackSet(
   const diagnostics: PackCompilerDiagnostic[] = [];
   const parsedManifests: OntologyPackManifest[] = [];
   const identities = new Set<string>();
+  const legacyManifestIndexes = new Set(input.legacyManifestIndexes ?? []);
   const roots = Array.from(
     new Map(
       input.roots.map((root) => [
@@ -806,12 +813,14 @@ export function compileOntologyPackSet(
     ).values()
   ).sort(
     (left, right) =>
-      left.ontologyId.localeCompare(right.ontologyId) ||
-      left.version.localeCompare(right.version)
+      compareCanonicalStrings(left.ontologyId, right.ontologyId) ||
+      compareCanonicalStrings(left.version, right.version)
   );
 
   input.manifests.forEach((rawManifest, index) => {
-    const manifest = parseOntologyPackManifest(rawManifest);
+    const manifest = parseOntologyPackManifest(rawManifest, {
+      allowLegacyT2kSchema: legacyManifestIndexes.has(index),
+    });
 
     if (!manifest) {
       addDiagnostic(diagnostics, {
@@ -911,8 +920,8 @@ export function compileOntologyPackSet(
     [...manifest.extends]
       .sort(
         (left, right) =>
-          left.ontologyId.localeCompare(right.ontologyId) ||
-          left.version.localeCompare(right.version) ||
+          compareCanonicalStrings(left.ontologyId, right.ontologyId) ||
+          compareCanonicalStrings(left.version, right.version) ||
           Number(right.required) - Number(left.required)
       )
       .forEach((dependency) =>

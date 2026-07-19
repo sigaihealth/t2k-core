@@ -98,6 +98,9 @@ describe("ontology manifest", () => {
       expect.arrayContaining(["/status", "/objectTypes/0"])
     );
     expect(parseOntologyPackManifest(invalid)).toBeNull();
+    expect(
+      parseOntologyPackManifest(invalid, { allowLegacyT2kSchema: true })
+    ).toMatchObject({ ontologyId: "smb", status: "approved" });
   });
 });
 
@@ -143,6 +146,25 @@ describe("pack compiler", () => {
     expect(first.resolutionHash).toBe(second.resolutionHash);
     expect(first.packs).toEqual(second.packs);
     expect(first.roots).toEqual(second.roots);
+  });
+
+  it("grandfathers only explicitly marked persisted manifests", () => {
+    const legacy = {
+      ...manifest({ ontologyId: "legacy" }),
+      status: "approved",
+    };
+    const strict = compileOntologyPackSet({
+      manifests: [legacy],
+      roots: [{ ontologyId: "legacy", version: "1.0.0" }],
+    });
+    const grandfathered = compileOntologyPackSet({
+      manifests: [legacy],
+      legacyManifestIndexes: [0],
+      roots: [{ ontologyId: "legacy", version: "1.0.0" }],
+    });
+
+    expect(strict.status).toBe("invalid");
+    expect(grandfathered.status).toBe("valid");
   });
 
   it("fails closed when required context is absent", () => {
@@ -213,6 +235,7 @@ describe("pack compiler", () => {
 describe("semantic utilities", () => {
   it("canonicalizes object key order", () => {
     expect(canonicalJson({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
+    expect(canonicalJson({ "ä": 2, z: 1 })).toBe('{"z":1,"ä":2}');
     expect(semanticHash({ b: 2, a: 1 })).toBe(semanticHash({ a: 1, b: 2 }));
   });
 

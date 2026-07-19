@@ -1,3 +1,4 @@
+import { canonicalJson, compareCanonicalStrings } from "./compiler.js";
 import type { DecisionLearningMode, JsonObject, JsonValue } from "./types.js";
 
 export const REFERENCE_POLICY_OPERATORS = [
@@ -288,12 +289,12 @@ function valueAtPath(value: unknown, path: string): unknown {
 }
 
 function equivalent(left: unknown, right: unknown) {
-  if (Object.is(left, right)) return true;
+  if (left === right) return true;
   if (
     (Array.isArray(left) || isObject(left)) &&
     (Array.isArray(right) || isObject(right))
   ) {
-    return JSON.stringify(left) === JSON.stringify(right);
+    return canonicalJson(left) === canonicalJson(right);
   }
   return false;
 }
@@ -543,5 +544,7 @@ export function aggregatePolicyRewards(
       confidenceUpper: meanReward + confidenceZ * standardError,
       guardrailViolations: values.filter((item) => item.guardrailViolation).length,
     };
-  }).sort((left, right) => left.policyVersionId.localeCompare(right.policyVersionId));
+  }).sort((left, right) =>
+    compareCanonicalStrings(left.policyVersionId, right.policyVersionId)
+  );
 }

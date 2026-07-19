@@ -38,6 +38,29 @@ describe("reference policy", () => {
     ).toBe("hold");
   });
 
+  it("compares structured values canonically and treats signed zero as equal", () => {
+    const structured = {
+      referencePolicy: {
+        rules: [
+          {
+            all: [{ path: "payload", operator: "eq", value: { a: 1, b: 2 } }],
+            action: "structured_match",
+          },
+          {
+            all: [{ path: "value", operator: "eq", value: 0 }],
+            action: "zero_match",
+          },
+        ],
+        defaultAction: "hold",
+      },
+    };
+
+    expect(evaluateReferencePolicy(structured, { payload: { b: 2, a: 1 } })).toBe(
+      "structured_match"
+    );
+    expect(evaluateReferencePolicy(structured, { value: -0 })).toBe("zero_match");
+  });
+
   it("computes replay status and metrics from held-out episode evidence", () => {
     const result = evaluateReferenceReplay({
       candidateSpecification: candidate,
