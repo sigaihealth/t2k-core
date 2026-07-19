@@ -52,16 +52,16 @@ challenger against a disjoint 20-episode holdout. Both policies have logged
 action support; the evaluator computes the result rather than accepting caller
 supplied metrics.
 
-After the npm bootstrap release, create an editable project directly:
+Create an editable local decision project directly from npm:
 
 ```bash
-npx create-t2k my-decision-loop
+npx create-t2k@latest my-decision-loop
 cd my-decision-loop
 npm start
 ```
 
-Until that package is visible on npm, `npm run example:scaffold` exercises the
-same generated project from a clean local tarball during CI.
+Contributors can run `npm run example:scaffold` to exercise the same generated
+project from a clean local tarball during CI.
 
 ## Install the Package
 
