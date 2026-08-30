@@ -38,7 +38,10 @@ rules in the versioned specification.
   so do not close, train, evaluate, promote, deploy, or consume reward aggregates
   until 0.4.3 is restored. Then recompute an open episode's reward before
   closure; a closed unbound episode remains quarantined and must be replayed as
-  a new episode if needed.
+  a new episode if needed. Do not mix or roll back to 0.4.2 during this
+  transition: although its migration leaves an existing nullable column in
+  place, that runtime does not enforce the quarantine and may consume unbound
+  evidence. Use only the write-limited 0.4.1 emergency path or restore 0.4.3.
 
 ## [0.4.2] - 2026-08-30
 

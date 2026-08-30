@@ -35,7 +35,7 @@ try {
   const coreManifest = JSON.parse(
     await fs.readFile(path.join(workspaceRoot, "packages/core/package.json"), "utf8")
   );
-  const expectedCoreDependency = `^${coreManifest.version}`;
+  const expectedCoreDependency = coreManifest.version;
   const coreTarball = packWorkspace("@t2kai/core");
   const tarball = packWorkspace("create-t2k");
   await fs.writeFile(
