@@ -155,6 +155,63 @@ describe("reference reward evaluation", () => {
     ).toThrow(ReferenceRewardError);
   });
 
+  it("rejects impossible dates and timestamps without an explicit offset", () => {
+    for (const observedAt of [
+      "2026-02-30T00:00:00Z",
+      "2026-08-30T00:00:00",
+    ]) {
+      expect(() =>
+        evaluateReferenceReward({
+          rewardSpec: [completionRate],
+          observations: [
+            {
+              measureRef: completionRate.measureRef,
+              observedValue: 0.8,
+              baselineValue: 0.4,
+              observationWindow: "7d",
+              observedAt,
+            },
+          ],
+        })
+      ).toThrow(/explicit UTC offset/);
+    }
+  });
+
+  it("selects the same latest explicit timestamp in different host timezones", () => {
+    const previousTimezone = process.env.TZ;
+    const evaluate = () =>
+      evaluateReferenceReward({
+        rewardSpec: [completionRate],
+        observations: [
+          {
+            measureRef: completionRate.measureRef,
+            observedValue: 0.5,
+            baselineValue: 1,
+            observationWindow: "7d",
+            observedAt: "2026-08-30T00:30:00-07:00",
+          },
+          {
+            measureRef: completionRate.measureRef,
+            observedValue: 1.5,
+            baselineValue: 1,
+            observationWindow: "7d",
+            observedAt: "2026-08-30T06:00:00Z",
+          },
+        ],
+      });
+    try {
+      process.env.TZ = "UTC";
+      const utc = evaluate();
+      process.env.TZ = "America/Los_Angeles";
+      const pacific = evaluate();
+      expect(utc).toEqual(pacific);
+      expect(utc.dimensions[0]?.observedValue).toBe(0.5);
+    } finally {
+      if (previousTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTimezone;
+    }
+  });
+
   it("rejects malformed runtime reward contracts", () => {
     expect(() =>
       evaluateReferenceReward({

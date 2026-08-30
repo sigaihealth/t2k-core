@@ -12,6 +12,7 @@ import {
   parseDateOnlyUtc,
   parseExplicitTimestamp,
 } from "./reference-time.js";
+import { snapshotJsonObject } from "./reference-json-input.js";
 import type { JsonObject, JsonValue } from "./types.js";
 
 export const SOURCE_AUTHENTICATION_STATES = [
@@ -444,7 +445,8 @@ export function executeSourceMapping(
   input: ExecuteSourceMappingInput
 ): ExecuteSourceMappingResult {
   const rawInput: unknown = input;
-  const inputRecord = isRecord(rawInput) ? rawInput : {};
+  const inputSnapshot = snapshotJsonObject(rawInput);
+  const inputRecord = inputSnapshot.value as Record<string, unknown>;
   const rawMapping = inputRecord.mapping;
   const mapping = (isRecord(rawMapping) ? rawMapping : {}) as unknown as
     OntologyPackSourceMapping;
@@ -1466,8 +1468,9 @@ export function reconcileCanonicalRecords(
 ): CanonicalReconciliationProposal {
   const issues: CanonicalReconciliationIssue[] = [];
   const rawInput: unknown = input;
-  const inputRecord = isRecord(rawInput) ? rawInput : {};
-  if (!isRecord(rawInput)) {
+  const inputSnapshot = snapshotJsonObject(rawInput);
+  const inputRecord = inputSnapshot.value as Record<string, unknown>;
+  if (!inputSnapshot.valid) {
     issues.push(
       reconciliationIssue(
         "malformed_reconciliation_input",
@@ -1487,7 +1490,7 @@ export function reconcileCanonicalRecords(
       ? policyRecord.policyVersion
       : "";
   const rawPriorities = policyRecord.prioritiesByDomain;
-  const policyHash = semanticHash(rawPolicy);
+  const policyHash = semanticHash(policyRecord);
   const prioritiesByDomain = new Map<string, string[]>();
 
   if (!policyId.trim() || !policyVersion.trim() || !isRecord(rawPriorities)) {
@@ -2187,7 +2190,8 @@ export function resolveEntityCandidates(
   input: EntityResolutionInput
 ): EntityResolutionDecision {
   const rawInput: unknown = input;
-  const inputRecord = isRecord(rawInput) ? rawInput : {};
+  const inputSnapshot = snapshotJsonObject(rawInput);
+  const inputRecord = inputSnapshot.value as Record<string, unknown>;
   const rawRules = inputRecord.rules;
   const rawRuleArray = Array.isArray(rawRules) ? [...rawRules] : [];
   const normalizedInputRules = rawRuleArray.sort(
@@ -2247,7 +2251,7 @@ export function resolveEntityCandidates(
       !isJsonObjectShape(candidate.identifiers)
   ).length;
   const invalidInputCount =
-    (isRecord(rawInput) ? 0 : 1) +
+    (inputSnapshot.valid ? 0 : 1) +
     (typeof inputRecord.sourceEntityKey === "string" &&
     inputRecord.sourceEntityKey.trim().length > 0
       ? 0

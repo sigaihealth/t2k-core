@@ -1,4 +1,4 @@
-# Build and Test a Governed Integration Hub with T2K 0.4.2
+# Build and Test a Governed Integration Hub with T2K 0.4.3
 
 This tutorial offers two runnable paths. The generated profile is the smallest
 way to inspect a complete evidence packet. The repository demo adds a browser
@@ -44,7 +44,7 @@ of being flattened into a monolithic record.
 Node.js 20.10 or newer is required.
 
 ```bash
-npx create-t2k@0.4.2 my-integration-hub --profile integration-hub
+npx create-t2k@0.4.3 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```

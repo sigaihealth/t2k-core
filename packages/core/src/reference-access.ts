@@ -4,6 +4,7 @@ import {
   semanticHash,
 } from "./compiler.js";
 import { parseExplicitTimestamp } from "./reference-time.js";
+import { snapshotJsonObject } from "./reference-json-input.js";
 import type { JsonObject } from "./types.js";
 
 export interface PurposeLimitedAccessRequest {
@@ -272,9 +273,11 @@ export function evaluatePurposeLimitedAccess(
   request: PurposeLimitedAccessRequest
 ): PurposeLimitedAccessReceipt {
   const rawPolicy: unknown = policy;
-  const policyRecord = isRecord(rawPolicy) ? rawPolicy : {};
+  const policySnapshot = snapshotJsonObject(rawPolicy);
+  const policyRecord = policySnapshot.value as Record<string, unknown>;
   const rawRequest: unknown = request;
-  const requestRecord = isRecord(rawRequest) ? rawRequest : {};
+  const requestSnapshot = snapshotJsonObject(rawRequest);
+  const requestRecord = requestSnapshot.value as Record<string, unknown>;
   const rawRules = policyRecord.rules;
   const sortedRules = (Array.isArray(rawRules) ? [...rawRules] : []).sort(
     (left, right) =>
@@ -285,9 +288,9 @@ export function evaluatePurposeLimitedAccess(
       compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
   );
   const policyHash = semanticHash(
-    isRecord(rawPolicy) && Array.isArray(rawRules)
-      ? { ...rawPolicy, rules: sortedRules }
-      : rawPolicy
+    policySnapshot.valid && Array.isArray(rawRules)
+      ? { ...policyRecord, rules: sortedRules }
+      : policyRecord
   );
   const normalizedRequest = {
     ...requestRecord,
@@ -296,13 +299,14 @@ export function evaluatePurposeLimitedAccess(
     sourceRecordRefs: sortUnknownArray(requestRecord.sourceRecordRefs),
   };
   const requestHash = semanticHash(normalizedRequest);
-  const requestValid = validRequestShape(rawRequest);
+  const requestValid = requestSnapshot.valid && validRequestShape(requestRecord);
   const requestedAt = requestValid
-    ? parseExplicitTimestamp(request.requestedAt)
+    ? parseExplicitTimestamp(requestRecord.requestedAt)
     : null;
   const policyId = unknownString(policyRecord.policyId);
   const policyVersion = unknownString(policyRecord.policyVersion);
   const policyShapeValid =
+    policySnapshot.valid &&
     nonblankString(policyRecord.policyId) &&
     nonblankString(policyRecord.policyVersion) &&
     policyRecord.defaultEffect === "deny" &&
@@ -365,13 +369,17 @@ export function evaluatePurposeLimitedAccess(
     matchedRuleId = invalidTimeRule.ruleId;
   } else {
     const validRules = sortedRules.filter(validRuleShape);
+    const normalizedAccessRequest = requestRecord as unknown as
+      PurposeLimitedAccessRequest;
     const explicitDeny = validRules.find(
       (rule) =>
-        rule.effect === "deny" && ruleMatches(rule, request, requestedAt)
+        rule.effect === "deny" &&
+        ruleMatches(rule, normalizedAccessRequest, requestedAt)
     );
     const explicitAllow = validRules.find(
       (rule) =>
-        rule.effect === "allow" && ruleMatches(rule, request, requestedAt)
+        rule.effect === "allow" &&
+        ruleMatches(rule, normalizedAccessRequest, requestedAt)
     );
 
     if (explicitDeny) {

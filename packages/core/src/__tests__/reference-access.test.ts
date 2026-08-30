@@ -53,6 +53,116 @@ const request: PurposeLimitedAccessRequest = {
 };
 
 describe("purpose-limited access", () => {
+  it("accepts class instances whose contract is enumerable own JSON data", () => {
+    class OwnDataPolicy implements PurposeLimitedAccessPolicy {
+      policyId = policy.policyId;
+      policyVersion = policy.policyVersion;
+      defaultEffect = "deny" as const;
+      rules = structuredClone(policy.rules);
+    }
+
+    expect(evaluatePurposeLimitedAccess(new OwnDataPolicy(), request)).toEqual(
+      evaluatePurposeLimitedAccess(policy, request)
+    );
+  });
+
+  it("fails closed on prototype-backed or accessor-backed policy data", () => {
+    class InheritedAllowRule {
+      get ruleId() { return "inherited"; }
+      get effect() { return "allow" as const; }
+      get roles() { return ["benefits_technician"]; }
+      get purposes() { return ["benefit_adjudication"]; }
+      get dataCategories() { return ["identity", "benefit_record"]; }
+      get jurisdictions() { return ["US-WA"]; }
+      get reason() { return "Inherited getters must not authorize access."; }
+    }
+    class InheritedDenyRule {
+      get ruleId() { return "inherited"; }
+      get effect() { return "deny" as const; }
+      get roles() { return ["benefits_technician"]; }
+      get purposes() { return ["benefit_adjudication"]; }
+      get dataCategories() { return ["identity", "benefit_record"]; }
+      get jurisdictions() { return ["US-WA"]; }
+      get reason() { return "Inherited getters must not affect access."; }
+    }
+    const inherited = evaluatePurposeLimitedAccess(
+      {
+        ...policy,
+        rules: [new InheritedAllowRule()],
+      } as PurposeLimitedAccessPolicy,
+      request
+    );
+    const inheritedDeny = evaluatePurposeLimitedAccess(
+      {
+        ...policy,
+        rules: [new InheritedDenyRule()],
+      } as PurposeLimitedAccessPolicy,
+      request
+    );
+
+    const accessorRule = { ...policy.rules[0] };
+    let getterInvocations = 0;
+    Object.defineProperty(accessorRule, "effect", {
+      enumerable: true,
+      get: () => {
+        getterInvocations += 1;
+        return "allow";
+      },
+    });
+    const accessor = evaluatePurposeLimitedAccess(
+      { ...policy, rules: [accessorRule] },
+      request
+    );
+
+    expect(inherited).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      matchedRuleId: null,
+    });
+    expect(inheritedDeny).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      matchedRuleId: null,
+    });
+    expect(inheritedDeny.policyHash).toBe(inherited.policyHash);
+    expect(accessor).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      matchedRuleId: null,
+    });
+    expect(inherited.policyHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(accessor.policyHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(getterInvocations).toBe(0);
+  });
+
+  it("preserves transparent proxy data and fails closed on revoked proxies or sparse arrays", () => {
+    const proxiedPolicy = new Proxy(policy, {});
+    const revocable = Proxy.revocable(policy, {});
+    revocable.revoke();
+    const sparseRoles: string[] = [];
+    sparseRoles.length = 1;
+
+    expect(evaluatePurposeLimitedAccess(proxiedPolicy, request)).toEqual(
+      evaluatePurposeLimitedAccess(policy, request)
+    );
+    expect(() =>
+      evaluatePurposeLimitedAccess(revocable.proxy, request)
+    ).not.toThrow();
+    expect(evaluatePurposeLimitedAccess(revocable.proxy, request)).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+    });
+    expect(
+      evaluatePurposeLimitedAccess(policy, {
+        ...request,
+        principalRoles: sparseRoles,
+      })
+    ).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_request",
+    });
+  });
+
   it("allows an active purpose match and emits a deterministic disclosure receipt", () => {
     const first = evaluatePurposeLimitedAccess(policy, request);
     const second = evaluatePurposeLimitedAccess(

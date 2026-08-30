@@ -3,6 +3,7 @@ import type {
   RewardDimensionAssessment,
   RewardDimensionSpec,
 } from "./types.js";
+import { parseExplicitTimestamp } from "./reference-time.js";
 
 export interface ReferenceRewardObservation {
   measureRef: string;
@@ -207,9 +208,13 @@ export function evaluateReferenceReward(input: {
         `observations[${index}].observationWindow is required.`
       );
     }
-    if (Number.isNaN(new Date(observation.observedAt).getTime())) {
+    const observedAt =
+      typeof observation.observedAt === "string"
+        ? parseExplicitTimestamp(observation.observedAt)
+        : null;
+    if (observedAt === null) {
       throw new ReferenceRewardError(
-        `observations[${index}].observedAt must be an ISO timestamp.`
+        `observations[${index}].observedAt must be a valid ISO timestamp with an explicit UTC offset.`
       );
     }
     if (observation.observedValue === undefined) {
@@ -231,7 +236,7 @@ export function evaluateReferenceReward(input: {
       ...observation,
       measureRef: observation.measureRef.trim(),
       observationWindow: observation.observationWindow.trim(),
-      observedAt: new Date(observation.observedAt).toISOString(),
+      observedAt: new Date(observedAt).toISOString(),
     };
   });
   const dimensions: RewardDimensionAssessment[] = rewardSpec.map((spec) => {
