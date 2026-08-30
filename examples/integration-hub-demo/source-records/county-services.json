@@ -1,0 +1,32 @@
+{
+  "mappingId": "county_services_case_v2",
+  "agency": {
+    "id": "county-services",
+    "label": "County Human Services",
+    "shortLabel": "County",
+    "accent": "violet"
+  },
+  "sourceSystem": "synthetic-county-services",
+  "sourceLocator": "synthetic://county-services/households/HH-8827",
+  "sourceRecordKey": "HH-8827",
+  "sourceSchemaVersion": "county-household-v2",
+  "eventTime": "2026-08-29T14:04:00.000Z",
+  "observedTime": "2026-08-29T14:04:11.000Z",
+  "authenticationState": "system_asserted",
+  "authorityRef": "authority:county-services",
+  "dataClassification": "synthetic_demo",
+  "purposeTags": ["integration_hub_demo", "case_coordination"],
+  "retentionPolicy": {
+    "policyId": "synthetic-session-only"
+  },
+  "payload": {
+    "event_id": "HH-8827:203",
+    "event_time": "2026-08-29T14:04:00.000Z",
+    "received_time": "2026-08-29T14:04:11.000Z",
+    "resident_id": "PB-1042",
+    "household_name": "Maya L. Chen",
+    "mailing_address": "18 Harbor Way Apt 2, Cedar Bay",
+    "eligibility": "pending",
+    "work_status": "employed"
+  }
+}

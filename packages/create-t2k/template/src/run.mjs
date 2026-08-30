@@ -12,8 +12,21 @@ import {
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const readJson = async (relativePath) =>
-  JSON.parse(await fs.readFile(path.join(projectRoot, relativePath), "utf8"));
+
+async function readJson(relativePath) {
+  const contents = await fs.readFile(
+    path.join(projectRoot, relativePath),
+    "utf8"
+  );
+  try {
+    return JSON.parse(contents);
+  } catch (error) {
+    const detail = error instanceof Error ? `: ${error.message}` : "";
+    throw new SyntaxError(`Invalid JSON in ${relativePath}${detail}`, {
+      cause: error,
+    });
+  }
+}
 
 const [manifest, context, baseline, candidate, episodes] = await Promise.all([
   readJson("ontology-pack.json"),

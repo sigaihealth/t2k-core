@@ -49,7 +49,7 @@ network, private packs, and customer data are separate products.
 Requirements: Node.js 20.10 or newer and npm.
 
 ```bash
-npx create-t2k@latest my-decision-loop
+npx create-t2k@0.4.1 my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -73,7 +73,7 @@ to delete the disposable lifecycle data.
 Generate a governed integration-hub project instead:
 
 ```bash
-npx create-t2k@latest my-integration-hub --profile integration-hub
+npx create-t2k@0.4.1 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -123,6 +123,28 @@ This records 24 authorized episodes with reconciled execution receipts and
 observed outcomes, computes held-out replay, promotes the candidate through an
 independent human role, and proves exact rollback.
 
+### Run the integration-hub demo app
+
+The repository also includes a browser tutorial built directly on the public
+core APIs. From a contributor checkout:
+
+```bash
+npm ci
+npm run build --workspace @t2kai/core
+npm test --prefix examples/integration-hub-demo
+npm run smoke --prefix examples/integration-hub-demo
+npm start --prefix examples/integration-hub-demo
+```
+
+Open <http://127.0.0.1:4173>. The demo maps three synthetic agency schemas,
+preserves receipt-bound conflicts, proves proposal stability across three input
+orders, routes an ambiguous reversible entity link to review, compares allow
+and default-deny access receipts, and records only an in-memory human
+disposition. It does not activate a canonical revision, merge an entity, or
+enforce access. Follow the
+[integration-hub tutorial](docs/INTEGRATION_HUB_TUTORIAL.md) for the complete
+walkthrough and safe experiment rules.
+
 ## Connect an MCP Host
 
 Connect an MCP host without a database or credentials:
@@ -132,7 +154,7 @@ Connect an MCP host without a database or credentials:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@latest"]
+      "args": ["-y", "@t2kai/mcp@0.3.0"]
     }
   }
 }
@@ -140,9 +162,13 @@ Connect an MCP host without a database or credentials:
 
 This safe default exposes ontology validation and compilation; reference
 policy, replay, and reward computation; and read-only source mapping,
-reconciliation, entity-link, and purpose-access evaluation. See
-[docs/MCP.md](docs/MCP.md) before enabling lifecycle persistence or agent
-writes.
+reconciliation, entity-link, and purpose-access evaluation. These four
+integration tools are independent computations: mapped results can feed
+reconciliation, while entity-link and purpose-access evaluation do not form
+later stages of one automatic pipeline. Setting `T2K_DATABASE_URL` adds the
+separate lifecycle tool set; it does not persist or activate any integration
+tool output. See [docs/MCP.md](docs/MCP.md) before enabling lifecycle
+persistence or agent writes.
 
 ## Install the Packages
 
@@ -150,8 +176,8 @@ The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm install @t2kai/core
-npm install @t2kai/mcp
+npm install @t2kai/core@0.4.1
+npm install @t2kai/mcp@0.3.0
 ```
 
 ```ts
@@ -169,7 +195,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.4.0` includes the governed source-mapping,
+`@t2kai/core@0.4.1` includes the governed source-mapping,
 canonical-reconciliation, entity-resolution, and purpose-access exports plus
 the persisted reconciliation review and lineage path documented in the core
 guide.

@@ -4,9 +4,11 @@ This project is a local T2K governed-decision quickstart. Its data is fully
 synthetic.
 
 ```bash
-npm install
 npm start
 ```
+
+`create-t2k` installs dependencies by default. Run `npm install` first only if
+this project was generated with `--no-install`.
 
 The run performs five explicit steps:
 
@@ -44,6 +46,10 @@ the local containers while preserving their volume, run `npm run db:down`. To
 explicitly delete the disposable local volume and all lifecycle data in it, run
 `npm run db:reset`.
 
+Compose binds PostgreSQL to `127.0.0.1:55432` only. Its `t2k` username and
+`t2k` password are disposable local-only quickstart credentials; never reuse
+them outside this generated project or expose this database to another host.
+
 ## Connect an MCP host
 
 Expose validation, compilation, policy execution, replay, and reward evaluation
@@ -54,7 +60,7 @@ to an MCP host with the safe database-free mode:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@latest"]
+      "args": ["-y", "@t2kai/mcp@0.3.0"]
     }
   }
 }
@@ -67,9 +73,15 @@ mutation modes.
 ## Change the example
 
 - Change current facts in `decision-context.json`.
-- Change executable rules in `policies/*.json`.
+- Change executable rules in `policies/*.json` and bump the policy `version`.
 - Add observed outcomes to `episodes/holdout.json` without reusing training data.
-- Change concepts and decision contracts in `ontology-pack.json`.
+- Change concepts or decision contracts in `ontology-pack.json` and bump
+  `ontologyVersion`.
+
+Treat any context, policy, episode, or ontology artifact that has already been
+executed or persisted as immutable evidence. Model a later observation with a
+new context or episode identifier, and keep the prior artifact available for
+replay instead of rewriting history.
 
 The quickstart uses local files, local PostgreSQL, and `@t2kai/core`; it does not
 send data to a hosted service. Set `T2K_DATABASE_URL` to use another Postgres

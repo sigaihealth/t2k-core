@@ -344,38 +344,122 @@ describePostgres("Postgres reference lifecycle", () => {
           proposer
         )
       ).rejects.toBeInstanceOf(ReferenceLifecycleValidationError);
+      for (const receivedAt of [
+        "2026-02-01T00:00:00",
+        "2026-02-30T00:00:00Z",
+      ]) {
+        await expect(
+          lifecycle.recordExecutionReceipt(
+            episode.id,
+            {
+              receiptKey: `receipt:invalid-time:${receivedAt}:${key}`,
+              idempotencyKey: `idempotency:invalid-time:${receivedAt}:${key}`,
+              connectorRef: "synthetic.harborlight.dispatch",
+              outcome: "succeeded",
+              requestHash: `request:invalid-time:${key}`,
+              responseHash: `response:invalid-time:${key}`,
+              rollbackContract: { operation: "restore_prior_dispatch_plan" },
+              reconciliationStatus: "reconciled",
+              receivedAt,
+            },
+            proposer
+          )
+        ).rejects.toBeInstanceOf(ReferenceLifecycleValidationError);
+      }
     }
-    await lifecycle.recordExecutionReceipt(
+    const receiptInput = {
+      receiptKey: `receipt:${key}`,
+      idempotencyKey: `idempotency:${key}`,
+      connectorRef: "synthetic.harborlight.dispatch",
+      externalTransactionId: `dispatch-${key}`,
+      outcome: "succeeded" as const,
+      requestHash: `request:${key}`,
+      responseHash: `response:${key}`,
+      response: { applied: true },
+      rollbackContract: { operation: "restore_prior_dispatch_plan" },
+      reconciliationStatus: "reconciled" as const,
+    };
+    const receipt = await lifecycle.recordExecutionReceipt(
       episode.id,
-      {
-        receiptKey: `receipt:${key}`,
-        idempotencyKey: `idempotency:${key}`,
-        connectorRef: "synthetic.harborlight.dispatch",
-        externalTransactionId: `dispatch-${key}`,
-        outcome: "succeeded",
-        requestHash: `request:${key}`,
-        responseHash: `response:${key}`,
-        response: { applied: true },
-        rollbackContract: { operation: "restore_prior_dispatch_plan" },
-        reconciliationStatus: "reconciled",
-      },
+      receiptInput,
       proposer
     );
-    await lifecycle.recordObservation(
+    if (index === 0) {
+      const retries = await Promise.all([
+        lifecycle.recordExecutionReceipt(episode.id, receiptInput, proposer),
+        lifecycle.recordExecutionReceipt(episode.id, receiptInput, proposer),
+      ]);
+      expect(retries.map((retry) => retry.id)).toEqual([receipt.id, receipt.id]);
+      await expect(
+        lifecycle.recordExecutionReceipt(
+          episode.id,
+          { ...receiptInput, responseHash: `different-response:${key}` },
+          proposer
+        )
+      ).rejects.toBeInstanceOf(ReferenceLifecycleConflictError);
+      await expect(
+        lifecycle.recordObservation(
+          episode.id,
+          {
+            measureRef: rewardSpec[0]!.measureRef,
+            observedValue: fixture.observedRate,
+            observationWindow: "7d",
+            sourceRefs: [`fixture://harborlight/${key}`],
+            observedAt: "2026-02-01T00:00:00",
+          },
+          proposer
+        )
+      ).rejects.toBeInstanceOf(ReferenceLifecycleValidationError);
+      await expect(
+        lifecycle.recordObservation(
+          episode.id,
+          {
+            measureRef: rewardSpec[0]!.measureRef,
+            observedValue: fixture.observedRate,
+            observationWindow: "7d",
+            sourceRefs: [`fixture://harborlight/${key}`],
+            observedAt: "2026-02-30T00:00:00Z",
+          },
+          proposer
+        )
+      ).rejects.toBeInstanceOf(ReferenceLifecycleValidationError);
+    }
+    const observationInput = {
+      measureRef: rewardSpec[0]!.measureRef,
+      observedValue: fixture.observedRate,
+      baselineValue: fixture.baselineRate,
+      unit: "ratio",
+      observationWindow: "7d",
+      sourceRefs: [`fixture://harborlight/${key}`],
+      provenance: { cohort: fixture.cohort, synthetic: true },
+      attributionConfidence: 1,
+      observedAt: new Date(Date.UTC(2026, 1, index + 1)).toISOString(),
+    };
+    const observation = await lifecycle.recordObservation(
       episode.id,
-      {
-        measureRef: rewardSpec[0]!.measureRef,
-        observedValue: fixture.observedRate,
-        baselineValue: fixture.baselineRate,
-        unit: "ratio",
-        observationWindow: "7d",
-        sourceRefs: [`fixture://harborlight/${key}`],
-        provenance: { cohort: fixture.cohort, synthetic: true },
-        attributionConfidence: 1,
-        observedAt: new Date(Date.UTC(2026, 1, index + 1)).toISOString(),
-      },
+      observationInput,
       proposer
     );
+    if (index === 0) {
+      const retries = await Promise.all([
+        lifecycle.recordObservation(episode.id, observationInput, proposer),
+        lifecycle.recordObservation(episode.id, observationInput, proposer),
+      ]);
+      expect(retries.map((retry) => retry.id)).toEqual([
+        observation.id,
+        observation.id,
+      ]);
+      expect(
+        (
+          await pool.query<{ count: string }>(
+            `SELECT COUNT(*) AS count
+             FROM t2k_reference.episode_observations
+             WHERE decision_episode_id = $1 AND measure_ref = $2`,
+            [episode.id, observationInput.measureRef]
+          )
+        ).rows[0]?.count
+      ).toBe("1");
+    }
     const assessment = await lifecycle.assessReward(
       episode.id,
       {
@@ -390,6 +474,14 @@ describePostgres("Postgres reference lifecycle", () => {
       "Receipt reconciliation and the seven-day observation are complete.",
       reviewer
     );
+    if (index === 0) {
+      expect(
+        (await lifecycle.recordExecutionReceipt(episode.id, receiptInput, proposer)).id
+      ).toBe(receipt.id);
+      expect(
+        (await lifecycle.recordObservation(episode.id, observationInput, proposer)).id
+      ).toBe(observation.id);
+    }
     (fixture.cohort === "training" ? trainingEpisodeIds : holdoutEpisodeIds).push(
       episode.id
     );

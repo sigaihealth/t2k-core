@@ -1,6 +1,6 @@
 {
   "name": "create-t2k",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Create a local T2K governed-decision project in minutes.",
   "license": "Apache-2.0",
   "keywords": [

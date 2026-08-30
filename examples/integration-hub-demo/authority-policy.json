@@ -1,0 +1,16 @@
+{
+  "policyId": "demo.public-benefits.authority",
+  "policyVersion": "2026.08.1",
+  "prioritiesByDomain": {
+    "benefit_eligibility": [
+      "authority:state-benefits",
+      "authority:county-services",
+      "authority:state-labor"
+    ],
+    "employment": [
+      "authority:state-labor",
+      "authority:county-services",
+      "authority:state-benefits"
+    ]
+  }
+}

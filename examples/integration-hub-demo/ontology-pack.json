@@ -1,0 +1,324 @@
+{
+  "$schema": "https://t2k.ai/schemas/t2k-ontology-pack.v1.schema.json",
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "demo.public-benefits-integration-hub",
+  "label": "Public Benefits Integration Hub Demo",
+  "description": "A synthetic multi-agency profile for receipt-bound canonical mapping and human-owned reconciliation.",
+  "packKind": "project",
+  "status": "accepted",
+  "scope": {
+    "domain": "synthetic_public_benefits",
+    "description": "Demonstrates integration governance without connecting to real agency systems or personal data.",
+    "jurisdictions": ["DEMO"],
+    "industries": [],
+    "businessStages": [],
+    "organizationSizes": [],
+    "exclusions": [
+      "production data",
+      "identity proofing",
+      "benefit adjudication",
+      "autonomous canonical activation"
+    ]
+  },
+  "objectTypes": [
+    {
+      "id": "benefits_person",
+      "label": "Benefits Person",
+      "family": "Public benefits",
+      "nodeKind": "person",
+      "identity": ["person_id"],
+      "purpose": "A proposed canonical view of one synthetic participant with source-level evidence.",
+      "properties": [
+        {
+          "id": "person_id",
+          "valueType": "string",
+          "required": true,
+          "description": "Synthetic cross-agency participant key.",
+          "authorityDomain": "participant_identity",
+          "temporal": false
+        },
+        {
+          "id": "display_name",
+          "valueType": "string",
+          "required": false,
+          "description": "Source-provided name candidate that requires human resolution when values differ.",
+          "authorityDomain": "participant_identity",
+          "temporal": true
+        },
+        {
+          "id": "mailing_address",
+          "valueType": "string",
+          "required": false,
+          "description": "Source-provided address candidate; every distinct value remains visible.",
+          "authorityDomain": "participant_contact",
+          "temporal": true
+        },
+        {
+          "id": "eligibility_status",
+          "valueType": "string",
+          "required": false,
+          "description": "Program status proposed under the versioned benefit-eligibility authority order.",
+          "authorityDomain": "benefit_eligibility",
+          "temporal": true
+        },
+        {
+          "id": "employment_status",
+          "valueType": "string",
+          "required": false,
+          "description": "Employment signal proposed under the versioned employment authority order.",
+          "authorityDomain": "employment",
+          "temporal": true
+        }
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "state_benefits_case_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "case_api",
+      "sourceLocator": "synthetic://state-benefits/cases",
+      "sourceSchemaVersion": "state-case-v1",
+      "object": "benefits_person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.clientNumber",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": ["trim", "uppercase"],
+          "valueMap": {},
+          "authorityDomain": "participant_identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.legalName",
+          "targetProperty": "display_name",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "participant_identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.residentialAddress",
+          "targetProperty": "mailing_address",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "participant_contact",
+          "conflictPolicy": "preserve_all"
+        },
+        {
+          "sourcePath": "$.benefitDecision",
+          "targetProperty": "eligibility_status",
+          "required": true,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {
+            "approved": "eligible"
+          },
+          "authorityDomain": "benefit_eligibility",
+          "conflictPolicy": "prefer_authority"
+        },
+        {
+          "sourcePath": "$.employmentIndicator",
+          "targetProperty": "employment_status",
+          "required": true,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {},
+          "authorityDomain": "employment",
+          "conflictPolicy": "prefer_authority"
+        }
+      ],
+      "targetIdentity": ["person_id"],
+      "idempotencyPath": "$.message_id",
+      "eventTimePath": "$.occurred_at",
+      "observedTimePath": "$.observed_at",
+      "authority": "state_benefits",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "always",
+      "replayable": true
+    },
+    {
+      "id": "county_services_case_v2",
+      "mappingVersion": "2.1.0",
+      "sourceType": "case_export",
+      "sourceLocator": "synthetic://county-services/households",
+      "sourceSchemaVersion": "county-household-v2",
+      "object": "benefits_person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.resident_id",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": ["trim", "uppercase"],
+          "valueMap": {},
+          "authorityDomain": "participant_identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.household_name",
+          "targetProperty": "display_name",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "participant_identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.mailing_address",
+          "targetProperty": "mailing_address",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "participant_contact",
+          "conflictPolicy": "preserve_all"
+        },
+        {
+          "sourcePath": "$.eligibility",
+          "targetProperty": "eligibility_status",
+          "required": true,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {},
+          "authorityDomain": "benefit_eligibility",
+          "conflictPolicy": "prefer_authority"
+        },
+        {
+          "sourcePath": "$.work_status",
+          "targetProperty": "employment_status",
+          "required": true,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {},
+          "authorityDomain": "employment",
+          "conflictPolicy": "prefer_authority"
+        }
+      ],
+      "targetIdentity": ["person_id"],
+      "idempotencyPath": "$.event_id",
+      "eventTimePath": "$.event_time",
+      "observedTimePath": "$.received_time",
+      "authority": "county_services",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "always",
+      "replayable": true
+    },
+    {
+      "id": "labor_wage_match_v1",
+      "mappingVersion": "1.3.0",
+      "sourceType": "wage_match",
+      "sourceLocator": "synthetic://state-labor/wage-matches",
+      "sourceSchemaVersion": "wage-match-v1",
+      "object": "benefits_person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.personKey",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": ["trim", "uppercase"],
+          "valueMap": {},
+          "authorityDomain": "participant_identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.employeeName",
+          "targetProperty": "display_name",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "participant_identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.contactAddress",
+          "targetProperty": "mailing_address",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "participant_contact",
+          "conflictPolicy": "preserve_all"
+        },
+        {
+          "sourcePath": "$.programDisposition",
+          "targetProperty": "eligibility_status",
+          "required": false,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {},
+          "authorityDomain": "benefit_eligibility",
+          "conflictPolicy": "prefer_authority"
+        },
+        {
+          "sourcePath": "$.employmentCode",
+          "targetProperty": "employment_status",
+          "required": true,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {
+            "active": "employed"
+          },
+          "authorityDomain": "employment",
+          "conflictPolicy": "prefer_authority"
+        }
+      ],
+      "targetIdentity": ["person_id"],
+      "idempotencyPath": "$.transmissionId",
+      "eventTimePath": "$.effectiveAt",
+      "observedTimePath": "$.receivedAt",
+      "authority": "state_labor",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "always",
+      "replayable": true
+    }
+  ],
+  "authorityModel": [
+    {
+      "domain": "participant_identity",
+      "authority": "human_case_supervisor",
+      "status": "accepted",
+      "scope": "Conflicting identity attributes require an independently authenticated human disposition."
+    },
+    {
+      "domain": "benefit_eligibility",
+      "authority": "versioned_agency_priority_policy",
+      "status": "accepted",
+      "scope": "Authority priority selects a proposal candidate but cannot activate it as accepted truth."
+    },
+    {
+      "domain": "employment",
+      "authority": "versioned_agency_priority_policy",
+      "status": "accepted",
+      "scope": "The labor agency is preferred for employment evidence within this synthetic policy."
+    }
+  ],
+  "eventTypes": [
+    {
+      "id": "agency_record_observed",
+      "source": "integration_hub",
+      "createsOrUpdates": "benefits_person",
+      "humanCheckpoint": "required"
+    }
+  ],
+  "reasoningFunctions": [
+    {
+      "id": "prepare_reconciliation_review",
+      "input": "receipt-bound agency evidence and a versioned authority policy",
+      "output": "deterministic, non-mutating canonical proposal",
+      "humanCheckpoint": "required"
+    }
+  ],
+  "extensions": {
+    "dataPolicy": {
+      "syntheticOnly": true,
+      "humanAuthorityRequired": true,
+      "autonomousActivationAllowed": false
+    }
+  }
+}

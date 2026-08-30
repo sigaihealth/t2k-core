@@ -1,0 +1,32 @@
+{
+  "policyId": "demo.case-coordination.minimum-necessary",
+  "policyVersion": "2026.08.1",
+  "defaultEffect": "deny",
+  "rules": [
+    {
+      "ruleId": "allow-assigned-case-coordination",
+      "effect": "allow",
+      "roles": ["case_coordinator"],
+      "purposes": ["case_coordination"],
+      "subjectRelationships": ["assigned_case"],
+      "dataCategories": ["identity", "contact", "program_status"],
+      "jurisdictions": ["DEMO"],
+      "attributeEquals": {
+        "deviceTrust": "managed"
+      },
+      "effectiveFrom": "2026-01-01T00:00:00.000Z",
+      "effectiveTo": "2027-01-01T00:00:00.000Z",
+      "reason": "An assigned case coordinator on a managed device may use the minimum synthetic case data needed for coordination."
+    },
+    {
+      "ruleId": "deny-self-access",
+      "effect": "deny",
+      "roles": ["case_coordinator"],
+      "purposes": ["case_coordination"],
+      "subjectRelationships": ["self"],
+      "dataCategories": ["identity", "contact", "program_status"],
+      "jurisdictions": ["DEMO"],
+      "reason": "Case coordinators may not use the integration view for their own record."
+    }
+  ]
+}

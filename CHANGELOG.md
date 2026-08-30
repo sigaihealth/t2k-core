@@ -6,6 +6,58 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-30
+
+### Added
+
+- A runnable three-source integration-hub demo app that exercises the published
+  ontology validation, compilation, governed mapping, canonical reconciliation,
+  entity-resolution, and purpose-access APIs. Its browser review is explicitly
+  in-memory and non-activating, with focused HTTP/model tests and an isolated
+  packed-core consumer smoke.
+
+### Fixed
+
+- Purpose-limited access now fails closed with `invalid_request` for blank,
+  incomplete, or malformed required request fields and returns deterministic
+  deny receipts instead of throwing on malformed request or policy shapes.
+- Entity resolution now prohibits automatic matching when caller-supplied
+  thresholds, candidates, identifiers, or rule collections are invalid. It
+  reports invalid threshold/input counts and binds the supplied invalid evidence
+  into deterministic decision hashes instead of silently substituting permissive
+  defaults.
+- Source mapping now rejects unrecognized authentication states while
+  normalizing their receipt/provenance assertion to `unknown`, rejects invalid
+  calendar dates such as February 30 for `iso_date`, and fails closed
+  deterministically on malformed nested execution input.
+- The Postgres lifecycle now requires explicit-offset, calendar-valid execution
+  and observation timestamps. Exact execution-receipt retries return the
+  existing receipt, conflicting receipt or idempotency-key reuse fails closed,
+  and exact observation retries collapse to one record and one ledger event,
+  including retries after episode closure.
+
+### Changed
+
+- The generated integration-hub packet now binds the exact loaded core version,
+  complete authority policy, every complete canonical-record/receipt pair, both
+  complete forward and reverse reconciliation proposals, and every issue before
+  computing the packet hash. Its order check now states its exact comparison
+  scope rather than implying exhaustive permutation coverage.
+- Generated JSON parse errors now identify the source filename. Generated
+  Postgres binds only to `127.0.0.1:55432`, and the included `t2k` credentials
+  are labeled disposable and local-only.
+- The tutorial now requires immutable follow-on source envelopes and explicit
+  mapping, ontology, and authority-policy version bumps; distinguishes raw
+  `sourceValueHash` from normalized `valueHash`; and separates independent MCP
+  computations from trusted application persistence, authenticated human review,
+  activation, and IAM enforcement.
+
+### Compatibility
+
+- `@t2kai/core@0.4.1` and `create-t2k@0.4.1` are patch releases for
+  well-formed 0.4 callers and generated projects. `@t2kai/mcp@0.3.0` remains
+  the MCP adapter version and resolves the patched compatible core runtime.
+
 ## [0.4.0] - 2026-08-30
 
 ### Added

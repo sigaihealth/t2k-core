@@ -972,6 +972,119 @@ describe("source integration", () => {
       ])
     );
   });
+
+  it("rejects and normalizes an unrecognized authentication state", () => {
+    const result = executeSourceMapping({
+      mapping: sourceMapping,
+      envelope: envelope(sourcePayload, {
+        authenticationState: "forged" as FederatedSourceEnvelope["authenticationState"],
+      }),
+    });
+
+    expect(result.receipt).toMatchObject({
+      status: "rejected",
+      authenticationState: "unknown",
+      humanReviewRequired: true,
+    });
+    expect(result.receipt.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_source_authentication_state",
+          severity: "error",
+        }),
+      ])
+    );
+    expect(
+      result.canonicalRecord.fields.every(
+        (field) => field.provenance.authenticationState === "unknown"
+      )
+    ).toBe(true);
+
+    const proposal = reconcileCanonicalRecords({
+      results: [result],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "unaccepted_source_evidence_excluded",
+        }),
+      ])
+    );
+    expect(
+      proposal.issues.some((item) => item.code === "malformed_source_receipt")
+    ).toBe(false);
+  });
+
+  it("rejects invalid calendar dates instead of mapping them verbatim", () => {
+    const result = executeSourceMapping({
+      mapping: sourceMapping,
+      envelope: envelope({
+        ...sourcePayload,
+        eligibilityDate: "2026-02-30",
+      }),
+    });
+
+    expect(result.receipt.status).toBe("rejected");
+    expect(
+      result.canonicalRecord.fields.some(
+        (field) =>
+          field.propertyRef === "benefits:person.eligibility_date"
+      )
+    ).toBe(false);
+    expect(result.receipt.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_iso_date_value",
+          severity: "error",
+          sourcePath: "$.eligibilityDate",
+          targetProperty: "benefits:person.eligibility_date",
+        }),
+      ])
+    );
+  });
+
+  it("fails closed deterministically on malformed source collection shapes", () => {
+    const malformedEnvelope = {
+      ...envelope(),
+      purposeTags: null,
+      retentionPolicy: null,
+    } as unknown as FederatedSourceEnvelope;
+    const malformedInput = {
+      mapping: sourceMapping,
+      envelope: malformedEnvelope,
+      acceptedIdempotencyRecords: null,
+      seenIdempotencyKeys: "not-an-array",
+    } as unknown as Parameters<typeof executeSourceMapping>[0];
+
+    const first = executeSourceMapping(malformedInput);
+    const second = executeSourceMapping(structuredClone(malformedInput));
+
+    expect(first).toEqual(second);
+    expect(first.receipt).toMatchObject({
+      status: "rejected",
+      purposeTags: [],
+      retentionPolicy: {},
+    });
+    expect(first.receipt.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_source_purpose_tags" }),
+        expect.objectContaining({ code: "invalid_source_retention_policy" }),
+        expect.objectContaining({ code: "invalid_accepted_idempotency_evidence" }),
+        expect.objectContaining({ code: "invalid_seen_idempotency_keys" }),
+      ])
+    );
+
+    const missing = executeSourceMapping(
+      null as unknown as Parameters<typeof executeSourceMapping>[0]
+    );
+    expect(missing.receipt).toMatchObject({
+      status: "rejected",
+      authenticationState: "unknown",
+      mappingId: "",
+      sourceSystem: "",
+    });
+  });
 });
 
 describe("canonical record reconciliation", () => {
@@ -2201,5 +2314,76 @@ describe("entity resolution", () => {
       "entity:a",
       "entity:ä",
     ]);
+  });
+
+  it("prohibits automatic matching when a supplied threshold is invalid", () => {
+    const decision = resolveEntityCandidates({
+      sourceEntityKey: "source:invalid-threshold",
+      identifiers: { beneficiary_id: "AB-123" },
+      candidates: [
+        {
+          entityKey: "canonical:exact",
+          identifiers: { beneficiary_id: "AB-123" },
+        },
+      ],
+      rules: [
+        {
+          identifier: "beneficiary_id",
+          weight: 1,
+          requiredForAutomaticMatch: true,
+        },
+      ],
+      automaticMatchThreshold: 2,
+    });
+
+    expect(decision).toMatchObject({
+      status: "needs_review",
+      targetEntityKey: "canonical:exact",
+      humanReviewRequired: true,
+      invalidThresholdCount: 1,
+      thresholds: {
+        automaticMatch: 0.9,
+        review: 0.5,
+        ambiguityMargin: 0.1,
+      },
+    });
+    expect(decision.rationale).toContain("threshold is invalid");
+  });
+
+  it("returns deterministic review-safe decisions for malformed entity shapes", () => {
+    const malformed = {
+      sourceEntityKey: "source:malformed",
+      identifiers: { beneficiary_id: "AB-123" },
+      candidates: [
+        {
+          entityKey: "canonical:malformed",
+          identifiers: null,
+        },
+      ],
+      rules: null,
+    } as unknown as Parameters<typeof resolveEntityCandidates>[0];
+
+    const first = resolveEntityCandidates(malformed);
+    const second = resolveEntityCandidates(structuredClone(malformed));
+    const missing = resolveEntityCandidates(
+      null as unknown as Parameters<typeof resolveEntityCandidates>[0]
+    );
+
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({
+      status: "new_entity",
+      targetEntityKey: null,
+      humanReviewRequired: true,
+      invalidRuleCount: 1,
+      invalidInputCount: 1,
+    });
+    expect(missing).toMatchObject({
+      status: "new_entity",
+      sourceEntityKey: "",
+      targetEntityKey: null,
+      humanReviewRequired: true,
+      invalidRuleCount: 1,
+    });
+    expect(missing.invalidInputCount).toBeGreaterThan(0);
   });
 });

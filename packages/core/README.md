@@ -27,7 +27,7 @@ subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
 and persisted reconciliation-review APIs described below are published in
-`@t2kai/core@0.4.0`.
+`@t2kai/core@0.4.1`.
 
 ## Compile Packs Locally
 
@@ -133,6 +133,22 @@ times, source authentication assertion, authority reference, classification,
 purpose and retention metadata, lateness, duplicate state, issues, and a hash
 of the receipt. Each mapped field retains its source path, source-value hash,
 mapping identity, authority domain, and the same source-control metadata.
+
+Treat an envelope as immutable once it has been mapped. A later observation is
+a new envelope: keep the prior file or event, use a new locator, source-record
+key, payload record ID or other idempotency value, and event and observation
+times. Use a distinct `sourceSystem` when the experiment represents a distinct
+synthetic source; do not relabel a real source merely to bypass replay checks.
+Changing an executable field mapping requires a new `mappingVersion` and a new
+containing `ontologyVersion`. Changing `humanCheckpoint` or any other ontology
+contract also requires a new `ontologyVersion`. Changing authority priorities
+requires a new `policyVersion`.
+
+The two field hashes answer different questions. Provenance
+`sourceValueHash` binds the raw JSON value extracted from the source before
+normalization or value mapping. A reconciliation candidate's `valueHash` binds
+the mapped canonical value after those transformations. They can legitimately
+differ; keep both to prove what arrived and what was compared.
 
 Legacy descriptive mappings that omit `fieldMappings` remain valid manifest
 documentation but are not executable. The function returns a rejected,
@@ -382,62 +398,71 @@ import {
   computeReferenceReconciliationProposalHash,
 } from "@t2kai/core/postgres";
 
-const proposalBody = {
-  proposalKey: "party:P-483:revision-1",
-  objectType: "party",
-  objectKey: "P-483",
-  baseRevisionId: null,
-  proposedContent: { partyId: "P-483", status: "active" },
-  evidence: {
-    reconciliationProposalHash: proposal.proposalHash,
-    sourceReceiptHashes: proposal.inputReceiptHashes,
-  },
-  executionReceiptIds: [],
-  requiredReviewerRole: "records_steward",
-  rationale: "Propose the reviewed source evidence as canonical revision 1.",
-};
-const proposalHash = computeReferenceReconciliationProposalHash(proposalBody);
-const persisted = await lifecycle.createReconciliationProposal(
-  {
-    ...proposalBody,
-    proposalHash,
-    idempotencyKey: "party:P-483:proposal-1",
-  },
-  { actorType: "agent", actorId: "agent:integration-router" },
-);
+const lifecycle = new PostgresReferenceLifecycle({
+  connectionString: process.env.T2K_DATABASE_URL,
+});
 
-const disposition = await lifecycle.reviewReconciliationProposal(
-  persisted.id,
-  {
+try {
+  await lifecycle.migrate();
+  const proposalBody = {
+    proposalKey: "party:P-483:revision-1",
     objectType: "party",
     objectKey: "P-483",
-    expectedProposalHash: persisted.proposalHash,
-    expectedDispositionVersion: 0,
-    decision: "approved",
-    reviewerRole: "records_steward",
-    rationale: "The evidence and authority policy support this revision.",
-    idempotencyKey: "party:P-483:review-1",
-  },
-  { actorType: "human", actorId: "human:records-steward-27" },
-);
+    baseRevisionId: null,
+    proposedContent: { partyId: "P-483", status: "active" },
+    evidence: {
+      reconciliationProposalHash: proposal.proposalHash,
+      sourceReceiptHashes: proposal.inputReceiptHashes,
+    },
+    executionReceiptIds: [],
+    requiredReviewerRole: "records_steward",
+    rationale: "Propose the reviewed source evidence as canonical revision 1.",
+  };
+  const proposalHash = computeReferenceReconciliationProposalHash(proposalBody);
+  const persisted = await lifecycle.createReconciliationProposal(
+    {
+      ...proposalBody,
+      proposalHash,
+      idempotencyKey: "party:P-483:proposal-1",
+    },
+    { actorType: "agent", actorId: "agent:integration-router" },
+  );
 
-const accepted = await lifecycle.acceptReconciliationProposal(
-  persisted.id,
-  {
-    objectType: "party",
-    objectKey: "P-483",
-    expectedProposalHash: persisted.proposalHash,
-    dispositionId: disposition.id,
-    expectedActiveRevisionId: null,
-    acceptedByRole: "records_activation_owner",
-    rationale: "Activate the independently approved canonical revision.",
-    idempotencyKey: "party:P-483:activation-1",
-  },
-  { actorType: "human", actorId: "human:activation-owner-11" },
-);
+  const disposition = await lifecycle.reviewReconciliationProposal(
+    persisted.id,
+    {
+      objectType: "party",
+      objectKey: "P-483",
+      expectedProposalHash: persisted.proposalHash,
+      expectedDispositionVersion: 0,
+      decision: "approved",
+      reviewerRole: "records_steward",
+      rationale: "The evidence and authority policy support this revision.",
+      idempotencyKey: "party:P-483:review-1",
+    },
+    { actorType: "human", actorId: "human:records-steward-27" },
+  );
 
-const lineage = await lifecycle.getReconciliationLineage("party", "P-483");
-console.log(lineage?.activeRevision?.id === accepted.revision.id);
+  const accepted = await lifecycle.acceptReconciliationProposal(
+    persisted.id,
+    {
+      objectType: "party",
+      objectKey: "P-483",
+      expectedProposalHash: persisted.proposalHash,
+      dispositionId: disposition.id,
+      expectedActiveRevisionId: null,
+      acceptedByRole: "records_activation_owner",
+      rationale: "Activate the independently approved canonical revision.",
+      idempotencyKey: "party:P-483:activation-1",
+    },
+    { actorType: "human", actorId: "human:activation-owner-11" },
+  );
+
+  const lineage = await lifecycle.getReconciliationLineage("party", "P-483");
+  console.log(lineage?.activeRevision?.id === accepted.revision.id);
+} finally {
+  await lifecycle.close();
+}
 ```
 
 `executionReceiptIds` refers only to persisted lifecycle execution receipts.
@@ -459,6 +484,13 @@ new activation rather than copying or rewriting content.
 dispositions, revisions, and all acceptance, rollback, and reactivation events.
 Changed idempotent retries, stale calls, cross-object references, duplicate
 canonical content, and self-review fail closed.
+
+Call these persistence methods only from trusted application code after the
+calling service has authenticated and authorized the actor. The MCP integration
+tools do not persist their outputs, and setting `T2K_DATABASE_URL` on the MCP
+server does not turn a mapping, reconciliation, entity-link, or access result
+into an accepted or active record. Human review and activation remain separate
+application gates outside MCP.
 
 ### Trust boundary
 

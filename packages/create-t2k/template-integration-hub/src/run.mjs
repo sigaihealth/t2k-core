@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,9 +16,18 @@ import {
 } from "@t2kai/core/compiler";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const loadPackageManifest = createRequire(import.meta.url);
 
 async function readJson(relativePath) {
-  return JSON.parse(await fs.readFile(path.join(root, relativePath), "utf8"));
+  const contents = await fs.readFile(path.join(root, relativePath), "utf8");
+  try {
+    return JSON.parse(contents);
+  } catch (error) {
+    const detail = error instanceof Error ? `: ${error.message}` : "";
+    throw new SyntaxError(`Invalid JSON in ${relativePath}${detail}`, {
+      cause: error,
+    });
+  }
 }
 
 async function readSourceRecords() {
@@ -43,6 +53,17 @@ const manifest = await readJson("ontology-pack.json");
 const authorityPolicy = await readJson("authority-policy.json");
 const sourceRecords = await readSourceRecords();
 const sourceSnapshot = structuredClone(sourceRecords);
+const corePackageManifest = loadPackageManifest("@t2kai/core/package.json");
+assert.equal(
+  corePackageManifest.name,
+  "@t2kai/core",
+  "The integration packet must identify the loaded core runtime."
+);
+assert.ok(
+  typeof corePackageManifest.version === "string" &&
+    corePackageManifest.version.length > 0,
+  "The loaded core runtime must expose an exact package version."
+);
 
 const validation = validateOntologyPackManifest(manifest);
 assert.equal(
@@ -160,8 +181,13 @@ assert.ok(preferAuthorityField.candidates.length >= 2);
 
 const packetWithoutHash = {
   profile: "integration-hub",
+  coreRuntime: {
+    packageName: corePackageManifest.name,
+    packageVersion: corePackageManifest.version,
+  },
   ontology: `${manifest.ontologyId}@${manifest.ontologyVersion}`,
   resolutionHash: compilation.resolutionHash,
+  authorityPolicy: structuredClone(authorityPolicy),
   sourceEvidence: mappedResults
     .map((result) => ({
       summary: {
@@ -172,6 +198,7 @@ const packetWithoutHash = {
         receiptHash: result.receipt.receiptHash,
         humanReviewRequired: result.receipt.humanReviewRequired,
       },
+      canonicalRecord: result.canonicalRecord,
       receipt: result.receipt,
     }))
     .sort((left, right) =>
@@ -181,38 +208,27 @@ const packetWithoutHash = {
       )
     ),
   reconciliation: {
-    proposalHash: reconciliation.proposalHash,
-    status: reconciliation.status,
-    canonicalIdentity: reconciliation.identity,
-    authorityPolicy: {
-      policyId: reconciliation.policyId,
-      policyVersion: reconciliation.policyVersion,
-      policyHash: reconciliation.policyHash,
-    },
-    deterministicAcrossInputOrder:
-      reconciliation.proposalHash === reverseOrderReconciliation.proposalHash,
-    humanReviewRequired: reconciliation.humanReviewRequired,
-    nonMutating: reconciliation.nonMutating,
-    alternativesPreserved: reconciliation.alternativesPreserved,
-    preserveAll: {
-      propertyRef: preserveAllField.propertyRef,
-      resolution: preserveAllField.resolution,
-      selectedValue: preserveAllField.selectedValue,
-      candidates: preserveAllField.candidates,
-    },
-    preferAuthority: {
-      propertyRef: preferAuthorityField.propertyRef,
-      resolution: preferAuthorityField.resolution,
-      selectedWithinProposal: preferAuthorityField.selectedValue,
-      candidates: preferAuthorityField.candidates,
+    proposal: reconciliation,
+    reverseInputOrderProposal: reverseOrderReconciliation,
+    forwardReverseInputOrderCheck: {
+      comparisonScope: "forward_and_reverse_input_order_only",
+      allPermutationsChecked: mappedResults.length === 2,
+      forwardReceiptHashes: mappedResults.map(
+        (result) => result.receipt.receiptHash
+      ),
+      reverseReceiptHashes: [...mappedResults]
+        .reverse()
+        .map((result) => result.receipt.receiptHash),
+      forwardProposalHash: reconciliation.proposalHash,
+      reverseProposalHash: reverseOrderReconciliation.proposalHash,
+      proposalHashesMatch:
+        reconciliation.proposalHash === reverseOrderReconciliation.proposalHash,
     },
   },
   humanReview: {
     status: "pending_human_review",
     proposalOnly: true,
-    issues: reconciliation.issues
-      .filter((issue) => issue.severity === "review")
-      .map(({ code, message, receiptHash }) => ({ code, message, receiptHash })),
+    issues: reconciliation.issues,
   },
   boundaries: {
     syntheticDataOnly: true,

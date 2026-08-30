@@ -17,7 +17,7 @@ Use this standard MCP host configuration:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@latest"]
+      "args": ["-y", "@t2kai/mcp@0.3.0"]
     }
   }
 }
@@ -70,6 +70,14 @@ source envelope + reviewed mapping -> map_governed_source_record -> receipt
 receipts + authority policy -> propose_canonical_reconciliation -> proposal
 ```
 
+That is the only data-flow edge among the four integration tools.
+`propose_entity_link` evaluates its own candidate-and-rule input, and
+`evaluate_purpose_limited_access` evaluates its own request-and-policy input.
+They are independent computations, not later stages of one automatic pipeline.
+None of the four tools stores another tool's result, accepts a human
+disposition, merges an entity, activates a canonical revision, or enforces an
+access decision.
+
 Inputs use strict JSON schemas: unknown control fields such as `persist`,
 `merge`, credentials, or caller-supplied approval state are rejected before
 execution. Before schema parsing can strip or normalize anything, every nested
@@ -89,7 +97,7 @@ Set `T2K_DATABASE_URL` to expose lifecycle inspection without enabling writes:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@latest"],
+      "args": ["-y", "@t2kai/mcp@0.3.0"],
       "env": {
         "T2K_DATABASE_URL": "postgresql://postgres:postgres@127.0.0.1:5432/t2k",
         "T2K_MCP_AUTO_MIGRATE": "true"
@@ -102,7 +110,9 @@ Set `T2K_DATABASE_URL` to expose lifecycle inspection without enabling writes:
 This adds `get_active_policy`, `get_lifecycle_snapshot`,
 `verify_event_chain`, and the `t2k://lifecycle/snapshot` resource. Schema
 migration is additive and idempotent; it is opt-in so the process does not
-silently claim a database schema.
+silently claim a database schema. `T2K_DATABASE_URL` does **not** change the
+four integration tools: their mapping, reconciliation, entity-link, and access
+outputs remain read-only and are not automatically persisted or activated.
 
 ## Explicitly Enable Agent Writes
 
@@ -132,6 +142,12 @@ judgment:
 Those operations must run through a trusted human interface that authenticates
 the reviewer and enforces separation of duties. This omission is a security
 boundary, not an incomplete tool list.
+
+Persisting a reconciliation proposal, recording an authenticated human
+disposition, and accepting or activating an append-only canonical revision are
+trusted-application operations through `PostgresReferenceLifecycle`. They are
+outside the MCP integration tools even when lifecycle reads or agent-authored
+writes are enabled.
 
 ## Programmatic Use
 
