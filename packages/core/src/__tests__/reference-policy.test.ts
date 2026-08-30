@@ -185,6 +185,55 @@ describe("reference policy", () => {
     ).toThrow("minimumEpisodes must be a finite number");
   });
 
+  it("does not traverse inherited object properties", () => {
+    for (const path of ["toString", "valueOf"]) {
+      const inheritedPropertyPolicy = {
+        referencePolicy: {
+          rules: [
+            {
+              all: [{ path, operator: "exists" }],
+              action: "inherited_match",
+            },
+          ],
+          defaultAction: "hold",
+        },
+      };
+
+      expect(evaluateReferencePolicy(inheritedPropertyPolicy, {})).toBe("hold");
+      expect(
+        evaluateReferencePolicy(inheritedPropertyPolicy, { [path]: "own" })
+      ).toBe("inherited_match");
+    }
+  });
+
+  it("does not traverse inherited values through sparse array paths", () => {
+    const sparseValues: string[] = [];
+    const inheritedArrayPrototype = Object.create(
+      Array.prototype
+    ) as Record<number, string>;
+    inheritedArrayPrototype[0] = "inherited";
+    Object.setPrototypeOf(sparseValues, inheritedArrayPrototype);
+    const sparsePathPolicy = {
+      referencePolicy: {
+        rules: [
+          {
+            all: [{ path: "values.0", operator: "exists" }],
+            action: "inherited_match",
+          },
+        ],
+        defaultAction: "hold",
+      },
+    };
+
+    expect(
+      evaluateReferencePolicy(sparsePathPolicy, { values: sparseValues })
+    ).toBe("hold");
+    sparseValues[0] = "own";
+    expect(
+      evaluateReferencePolicy(sparsePathPolicy, { values: sparseValues })
+    ).toBe("inherited_match");
+  });
+
   it("does not pass a challenger without logged-action coverage", () => {
     const unsupported = {
       referencePolicy: {

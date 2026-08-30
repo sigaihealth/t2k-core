@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS t2k_reference.reward_assessments (
   decision_episode_id UUID NOT NULL REFERENCES t2k_reference.decision_episodes(id),
   assessment_key TEXT NOT NULL,
   reward_spec_hash TEXT NOT NULL,
+  observation_set_hash TEXT NOT NULL,
   dimensions JSONB NOT NULL,
   scalar_reward DOUBLE PRECISION,
   evaluation_reward DOUBLE PRECISION,
@@ -197,6 +198,9 @@ CREATE TABLE IF NOT EXISTS t2k_reference.reward_assessments (
 
 ALTER TABLE t2k_reference.reward_assessments
   ADD COLUMN IF NOT EXISTS evaluation_reward DOUBLE PRECISION;
+
+ALTER TABLE t2k_reference.reward_assessments
+  ADD COLUMN IF NOT EXISTS observation_set_hash TEXT;
 
 UPDATE t2k_reference.reward_assessments
 SET evaluation_reward = CASE

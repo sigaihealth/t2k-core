@@ -303,6 +303,7 @@ export interface ReferenceRewardAssessmentRecord {
   decisionEpisodeId: string;
   assessmentKey: string;
   rewardSpecHash: string;
+  observationSetHash: string | null;
   dimensions: ReferenceRewardEvaluation["dimensions"];
   scalarReward: number | null;
   evaluationReward: number | null;
@@ -718,13 +719,25 @@ function sameNullableId(left: string | null, right: string | null) {
 function valueAtPath(value: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((current, segment) => {
     if (Array.isArray(current) && /^\d+$/.test(segment)) {
-      return current[Number(segment)];
+      const index = Number(segment);
+      return Number.isSafeInteger(index) && Object.hasOwn(current, index)
+        ? current[index]
+        : undefined;
     }
     if (current && typeof current === "object" && !Array.isArray(current)) {
-      return (current as Record<string, unknown>)[segment];
+      return Object.hasOwn(current, segment)
+        ? (current as Record<string, unknown>)[segment]
+        : undefined;
     }
     return undefined;
   }, value);
+}
+
+function observationSetHash(observationIds: readonly string[]) {
+  return semanticHash({
+    bindingVersion: "t2k.reward-observation-set.v1",
+    observationIds: [...observationIds].sort(compareCanonicalStrings),
+  });
 }
 
 function stringArrayField(
@@ -900,6 +913,47 @@ function camelizeRow<T>(row: QueryResultRow): T {
     record[camelKey(key)] = value instanceof Date ? value.toISOString() : value;
   }
   return record as T;
+}
+
+function verifyLifecycleEventRows(
+  rows: QueryResultRow[]
+): ReferenceEventChainVerification {
+  let previousHash = GENESIS_EVENT_HASH;
+  for (const row of rows) {
+    const event = camelizeRow<ReferenceLifecycleEventRecord>(row);
+    const expected = createHash("sha256")
+      .update(previousHash)
+      .update(
+        JSON.stringify(
+          stableValue({
+            id: event.id,
+            eventType: event.eventType,
+            objectType: event.objectType,
+            objectId: event.objectId,
+            actorType: event.actorType,
+            actorId: event.actorId,
+            payload: event.payload,
+            createdAt: event.createdAt,
+          })
+        )
+      )
+      .digest("hex");
+    if (event.previousHash !== previousHash || event.eventHash !== expected) {
+      return {
+        valid: false,
+        eventCount: rows.length,
+        headHash: previousHash,
+        invalidSequence: Number(event.sequence),
+      };
+    }
+    previousHash = event.eventHash;
+  }
+  return {
+    valid: true,
+    eventCount: rows.length,
+    headHash: previousHash,
+    invalidSequence: null,
+  };
 }
 
 function postgresError(error: unknown, fallback: string): never {
@@ -2319,6 +2373,9 @@ export class PostgresReferenceLifecycle {
       const observations = observationResult.rows.map((row) =>
         camelizeRow<ReferenceObservationRecord>(row)
       );
+      const boundObservationSetHash = observationSetHash(
+        observations.map((observation) => observation.id)
+      );
       const reward = evaluateReferenceReward({
         rewardSpec: episode.learning_contract.rewardSpec,
         observations,
@@ -2329,15 +2386,17 @@ export class PostgresReferenceLifecycle {
         const result = await client.query(
           `INSERT INTO t2k_reference.reward_assessments (
              id, decision_episode_id, assessment_key, reward_spec_hash,
-             dimensions, scalar_reward, evaluation_reward, attribution,
-             lifecycle_status, assessed_by_actor_type, assessed_by_actor_id
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             observation_set_hash, dimensions, scalar_reward, evaluation_reward,
+             attribution, lifecycle_status, assessed_by_actor_type,
+             assessed_by_actor_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING *`,
           [
             id,
             episode.id,
             requireText(input.assessmentKey, "assessmentKey"),
             rewardSpecHash,
+            boundObservationSetHash,
             json(reward.dimensions),
             reward.scalarReward,
             reward.evaluationReward,
@@ -2358,6 +2417,8 @@ export class PostgresReferenceLifecycle {
             scalarReward: reward.scalarReward,
             evaluationReward: reward.evaluationReward,
             rewardSpecHash,
+            observationSetHash: boundObservationSetHash,
+            observationCount: observations.length,
           },
         });
         return camelizeRow<ReferenceRewardAssessmentRecord>(result.rows[0]!);
@@ -2430,11 +2491,12 @@ export class PostgresReferenceLifecycle {
         lifecycle_status: string;
         scalar_reward: number | null;
         evaluation_reward: number | null;
+        observation_set_hash: string | null;
         assessed_by_actor_id: string;
       }>(
         client,
         `SELECT lifecycle_status, scalar_reward, evaluation_reward,
-                assessed_by_actor_id
+                observation_set_hash, assessed_by_actor_id
          FROM t2k_reference.reward_assessments
          WHERE decision_episode_id = $1
          ORDER BY assessed_at DESC, id DESC
@@ -2442,6 +2504,21 @@ export class PostgresReferenceLifecycle {
         [episode.id],
         "Episode closure requires a reward assessment."
       );
+      const currentObservations = await client.query<{ id: string }>(
+        `SELECT id
+         FROM t2k_reference.episode_observations
+         WHERE decision_episode_id = $1
+         ORDER BY id`,
+        [episode.id]
+      );
+      const currentObservationSetHash = observationSetHash(
+        currentObservations.rows.map((observation) => observation.id)
+      );
+      if (assessment.observation_set_hash !== currentObservationSetHash) {
+        throw new ReferenceLifecycleConflictError(
+          "Episode closure requires a reward assessment of the current observation set."
+        );
+      }
       if (
         !["complete", "guardrail_violation"].includes(
           assessment.lifecycle_status
@@ -2474,6 +2551,7 @@ export class PostgresReferenceLifecycle {
           scalarReward: assessment.scalar_reward,
           evaluationReward: assessment.evaluation_reward,
           rewardStatus: assessment.lifecycle_status,
+          observationSetHash: assessment.observation_set_hash,
           rationale,
         },
       });
@@ -4463,118 +4541,87 @@ export class PostgresReferenceLifecycle {
     const result = await this.pool.query(
       `SELECT * FROM t2k_reference.lifecycle_events ORDER BY sequence ASC`
     );
-    let previousHash = GENESIS_EVENT_HASH;
-    for (const row of result.rows) {
-      const event = camelizeRow<ReferenceLifecycleEventRecord>(row);
-      const expected = createHash("sha256")
-        .update(previousHash)
-        .update(
-          JSON.stringify(
-            stableValue({
-              id: event.id,
-              eventType: event.eventType,
-              objectType: event.objectType,
-              objectId: event.objectId,
-              actorType: event.actorType,
-              actorId: event.actorId,
-              payload: event.payload,
-              createdAt: event.createdAt,
-            })
-          )
-        )
-        .digest("hex");
-      if (event.previousHash !== previousHash || event.eventHash !== expected) {
-        return {
-          valid: false,
-          eventCount: result.rows.length,
-          headHash: previousHash,
-          invalidSequence: Number(event.sequence),
-        };
-      }
-      previousHash = event.eventHash;
-    }
-    return {
-      valid: true,
-      eventCount: result.rows.length,
-      headHash: previousHash,
-      invalidSequence: null,
-    };
+    return verifyLifecycleEventRows(result.rows);
   }
 
   async snapshot(): Promise<ReferenceLifecycleSnapshot> {
-    const [policies, versions, contexts, episodes, candidates, evaluations, promotions] =
-      await Promise.all([
-        this.pool.query(
-          "SELECT * FROM t2k_reference.reasoning_policies ORDER BY created_at"
+    return this.repeatableRead(async (client) => {
+      const policies = await client.query(
+        "SELECT * FROM t2k_reference.reasoning_policies ORDER BY created_at"
+      );
+      const versions = await client.query(
+        "SELECT * FROM t2k_reference.reasoning_policy_versions ORDER BY created_at"
+      );
+      const contexts = await client.query(
+        "SELECT * FROM t2k_reference.decision_contexts ORDER BY created_at"
+      );
+      const episodes = await client.query(
+        "SELECT * FROM t2k_reference.decision_episodes ORDER BY opened_at"
+      );
+      const candidates = await client.query(
+        "SELECT * FROM t2k_reference.learning_candidates ORDER BY created_at"
+      );
+      const evaluations = await client.query(
+        "SELECT * FROM t2k_reference.policy_evaluations ORDER BY created_at"
+      );
+      const promotions = await client.query(
+        "SELECT * FROM t2k_reference.policy_promotions ORDER BY created_at"
+      );
+      const rewardRows = await client.query<{
+        policy_version_id: string;
+        evaluation_reward: number;
+        lifecycle_status: string;
+      }>(
+        `SELECT episodes.policy_version_id, assessments.evaluation_reward,
+                assessments.lifecycle_status
+         FROM t2k_reference.decision_episodes AS episodes
+         INNER JOIN LATERAL (
+           SELECT evaluation_reward, lifecycle_status
+           FROM t2k_reference.reward_assessments
+           WHERE decision_episode_id = episodes.id
+           ORDER BY assessed_at DESC, id DESC
+           LIMIT 1
+         ) AS assessments ON TRUE
+         WHERE episodes.lifecycle_status = 'closed'
+           AND assessments.lifecycle_status IN ('complete', 'guardrail_violation')
+           AND assessments.evaluation_reward IS NOT NULL`
+      );
+      const eventRows = await client.query(
+        `SELECT * FROM t2k_reference.lifecycle_events ORDER BY sequence ASC`
+      );
+      return {
+        schemaVersion: REFERENCE_LIFECYCLE_SCHEMA_VERSION,
+        policies: policies.rows.map((row) =>
+          camelizeRow<ReferencePolicyRecord>(row)
         ),
-        this.pool.query(
-          "SELECT * FROM t2k_reference.reasoning_policy_versions ORDER BY created_at"
+        policyVersions: versions.rows.map((row) =>
+          camelizeRow<ReferencePolicyVersionRecord>(row)
         ),
-        this.pool.query(
-          "SELECT * FROM t2k_reference.decision_contexts ORDER BY created_at"
+        contexts: contexts.rows.map((row) =>
+          camelizeRow<ReferenceDecisionContextRecord>(row)
         ),
-        this.pool.query(
-          "SELECT * FROM t2k_reference.decision_episodes ORDER BY opened_at"
+        episodes: episodes.rows.map((row) =>
+          camelizeRow<ReferenceEpisodeRecord>(row)
         ),
-        this.pool.query(
-          "SELECT * FROM t2k_reference.learning_candidates ORDER BY created_at"
+        candidates: candidates.rows.map((row) =>
+          camelizeRow<ReferenceLearningCandidateRecord>(row)
         ),
-        this.pool.query(
-          "SELECT * FROM t2k_reference.policy_evaluations ORDER BY created_at"
+        evaluations: evaluations.rows.map((row) =>
+          camelizeRow<ReferencePolicyEvaluationRecord>(row)
         ),
-        this.pool.query(
-          "SELECT * FROM t2k_reference.policy_promotions ORDER BY created_at"
+        promotions: promotions.rows.map((row) =>
+          camelizeRow<ReferencePolicyPromotionRecord>(row)
         ),
-      ]);
-    const rewardRows = await this.pool.query<{
-      policy_version_id: string;
-      evaluation_reward: number;
-      lifecycle_status: string;
-    }>(
-      `SELECT episodes.policy_version_id, assessments.evaluation_reward,
-              assessments.lifecycle_status
-       FROM t2k_reference.decision_episodes AS episodes
-       INNER JOIN LATERAL (
-         SELECT evaluation_reward, lifecycle_status
-         FROM t2k_reference.reward_assessments
-         WHERE decision_episode_id = episodes.id
-         ORDER BY assessed_at DESC, id DESC
-         LIMIT 1
-       ) AS assessments ON TRUE
-       WHERE episodes.lifecycle_status = 'closed'
-         AND assessments.lifecycle_status IN ('complete', 'guardrail_violation')
-         AND assessments.evaluation_reward IS NOT NULL`
-    );
-    return {
-      schemaVersion: REFERENCE_LIFECYCLE_SCHEMA_VERSION,
-      policies: policies.rows.map((row) => camelizeRow<ReferencePolicyRecord>(row)),
-      policyVersions: versions.rows.map((row) =>
-        camelizeRow<ReferencePolicyVersionRecord>(row)
-      ),
-      contexts: contexts.rows.map((row) =>
-        camelizeRow<ReferenceDecisionContextRecord>(row)
-      ),
-      episodes: episodes.rows.map((row) =>
-        camelizeRow<ReferenceEpisodeRecord>(row)
-      ),
-      candidates: candidates.rows.map((row) =>
-        camelizeRow<ReferenceLearningCandidateRecord>(row)
-      ),
-      evaluations: evaluations.rows.map((row) =>
-        camelizeRow<ReferencePolicyEvaluationRecord>(row)
-      ),
-      promotions: promotions.rows.map((row) =>
-        camelizeRow<ReferencePolicyPromotionRecord>(row)
-      ),
-      rewardAggregates: aggregatePolicyRewards(
-        rewardRows.rows.map((row) => ({
-          policyVersionId: row.policy_version_id,
-          scalarReward: row.evaluation_reward,
-          guardrailViolation: row.lifecycle_status === "guardrail_violation",
-        }))
-      ),
-      eventChain: await this.verifyEventChain(),
-    };
+        rewardAggregates: aggregatePolicyRewards(
+          rewardRows.rows.map((row) => ({
+            policyVersionId: row.policy_version_id,
+            scalarReward: row.evaluation_reward,
+            guardrailViolation: row.lifecycle_status === "guardrail_violation",
+          }))
+        ),
+        eventChain: verifyLifecycleEventRows(eventRows.rows),
+      };
+    });
   }
 }
 

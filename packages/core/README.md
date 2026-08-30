@@ -27,7 +27,7 @@ subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
 and persisted reconciliation-review APIs described below are published in
-`@t2kai/core@0.4.1`.
+`@t2kai/core@0.4.2`.
 
 ## Compile Packs Locally
 

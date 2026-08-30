@@ -199,6 +199,46 @@ describe("purpose-limited access", () => {
     });
   });
 
+  it("fails closed when selector keys are misspelled", () => {
+    const misspelledPurpose = evaluatePurposeLimitedAccess(
+      {
+        ...policy,
+        rules: [
+          {
+            ...policy.rules[0],
+            purposes: undefined,
+            purpose: ["benefit_adjudication"],
+          } as unknown as PurposeLimitedAccessPolicy["rules"][number],
+        ],
+      },
+      { ...request, purpose: "marketing" }
+    );
+    const misspelledDataCategory = evaluatePurposeLimitedAccess(
+      {
+        ...policy,
+        rules: [
+          {
+            ...policy.rules[0],
+            dataCategories: undefined,
+            dataCategory: ["identity"],
+          } as unknown as PurposeLimitedAccessPolicy["rules"][number],
+        ],
+      },
+      { ...request, dataCategories: ["medical_record"] }
+    );
+
+    expect(misspelledPurpose).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      matchedRuleId: "allow-assigned-benefit-work",
+    });
+    expect(misspelledDataCategory).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      matchedRuleId: "allow-assigned-benefit-work",
+    });
+  });
+
   it("rejects an explicitly empty attribute constraint", () => {
     const receipt = evaluatePurposeLimitedAccess(
       {

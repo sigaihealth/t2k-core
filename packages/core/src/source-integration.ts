@@ -197,6 +197,7 @@ export interface CanonicalReconciliationProposal {
 
 const SAFE_PATH = /^\$(?:\.[A-Za-z0-9_-]+)*$/;
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9_-]+$/;
+const NAMESPACED_ID = /^[a-z0-9][a-z0-9._:-]*$/;
 const UNSAFE_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
 
 function asTimestamp(value: string) {
@@ -319,6 +320,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function isNonblankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isNamespacedId(value: unknown): value is string {
+  return isNonblankString(value) && NAMESPACED_ID.test(value);
+}
+
 function sourcePathIsSafe(path: string) {
   return (
     SAFE_PATH.test(path) &&
@@ -362,10 +371,10 @@ function isExecutableFieldMapping(
   return (
     typeof value.sourcePath === "string" &&
     sourcePathIsSafe(value.sourcePath) &&
-    typeof value.targetProperty === "string" &&
-    value.targetProperty.length > 0 &&
+    isNamespacedId(value.targetProperty) &&
     typeof value.required === "boolean" &&
     Array.isArray(normalizations) &&
+    new Set(normalizations).size === normalizations.length &&
     normalizations.every(
       (normalization) =>
         typeof normalization === "string" &&
@@ -375,8 +384,7 @@ function isExecutableFieldMapping(
     ) &&
     isRecord(valueMap) &&
     Object.values(valueMap).every(isPrimitiveJsonValue) &&
-    typeof value.authorityDomain === "string" &&
-    value.authorityDomain.length > 0 &&
+    isNonblankString(value.authorityDomain) &&
     typeof value.conflictPolicy === "string" &&
     CONFLICT_POLICIES.has(
       value.conflictPolicy as OntologyPackSourceFieldMapping["conflictPolicy"]
@@ -579,8 +587,7 @@ export function executeSourceMapping(
     : [];
   const targetIdentity = rawTargetIdentity.length
     ? rawTargetIdentity.filter(
-        (propertyRef): propertyRef is string =>
-          typeof propertyRef === "string" && propertyRef.length > 0
+        (propertyRef): propertyRef is string => isNonblankString(propertyRef)
       )
     : [];
   const driftPolicy = DRIFT_POLICIES.has(
@@ -617,6 +624,24 @@ export function executeSourceMapping(
       : "";
   const objectRef = typeof mapping.object === "string" ? mapping.object : "";
 
+  if (
+    !isRecord(rawMapping) ||
+    !isNamespacedId(mapping.id) ||
+    !isNonblankString(mapping.sourceType) ||
+    !isNonblankString(mapping.sourceLocator) ||
+    !isNamespacedId(mapping.object) ||
+    !isNonblankString(mapping.authority) ||
+    !isNonblankString(mapping.reviewStatus)
+  ) {
+    issues.push(
+      issue(
+        "invalid_source_mapping_metadata",
+        "error",
+        "Executable mappings require a namespaced mapping ID and object plus nonblank source type, locator, authority, and review status."
+      )
+    );
+  }
+
   if (fieldMappings.length === 0) {
     issues.push(
       issue(
@@ -635,7 +660,7 @@ export function executeSourceMapping(
       )
     );
   }
-  if (!mappingVersion) {
+  if (!isNonblankString(mappingVersion)) {
     issues.push(
       issue(
         "missing_mapping_version",
@@ -644,7 +669,7 @@ export function executeSourceMapping(
       )
     );
   }
-  if (!sourceSchemaVersion) {
+  if (!isNonblankString(sourceSchemaVersion)) {
     issues.push(
       issue(
         "missing_source_schema_version",
@@ -2176,11 +2201,29 @@ export function resolveEntityCandidates(
           : ""
       ) || compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
   );
+  const structurallyValidRules = normalizedInputRules.filter(
+    validEntityResolutionRule
+  );
+  const ruleIdentifierCounts = new Map<string, number>();
+  for (const rule of structurallyValidRules) {
+    ruleIdentifierCounts.set(
+      rule.identifier,
+      (ruleIdentifierCounts.get(rule.identifier) ?? 0) + 1
+    );
+  }
+  const duplicateRuleIdentifiers = new Set(
+    [...ruleIdentifierCounts]
+      .filter(([, count]) => count > 1)
+      .map(([identifier]) => identifier)
+  );
   const invalidRuleCount =
-    normalizedInputRules.filter((rule) => !validEntityResolutionRule(rule))
-      .length + (Array.isArray(rawRules) ? 0 : 1);
-  const rules = normalizedInputRules
-    .filter(validEntityResolutionRule)
+    normalizedInputRules.length - structurallyValidRules.length +
+    structurallyValidRules.filter((rule) =>
+      duplicateRuleIdentifiers.has(rule.identifier)
+    ).length +
+    (Array.isArray(rawRules) ? 0 : 1);
+  const rules = structurallyValidRules
+    .filter((rule) => !duplicateRuleIdentifiers.has(rule.identifier))
     .sort(
       (left, right) =>
         compareCanonicalStrings(left.identifier, right.identifier) ||

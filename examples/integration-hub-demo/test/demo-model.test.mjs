@@ -84,7 +84,7 @@ describe("integration hub demo model", () => {
     );
 
     assert.equal(model.determinism.verified, true);
-    assert.equal(model.determinism.testedOrders, 3);
+    assert.equal(model.determinism.testedOrders, 6);
     assert.equal(new Set(hashes).size, 1);
     assert.equal(hashes[0], model.proposal.proposalHash);
   });

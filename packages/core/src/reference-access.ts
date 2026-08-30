@@ -113,8 +113,29 @@ function validSelector(value: unknown) {
   );
 }
 
+const PURPOSE_LIMITED_ACCESS_RULE_KEYS = new Set([
+  "ruleId",
+  "effect",
+  "roles",
+  "purposes",
+  "subjectRelationships",
+  "dataCategories",
+  "jurisdictions",
+  "attributeEquals",
+  "effectiveFrom",
+  "effectiveTo",
+  "reason",
+]);
+
 function validRuleShape(rule: unknown): rule is PurposeLimitedAccessRule {
   if (!isRecord(rule)) return false;
+  if (
+    Object.keys(rule).some(
+      (key) => !PURPOSE_LIMITED_ACCESS_RULE_KEYS.has(key)
+    )
+  ) {
+    return false;
+  }
   const selectors = [
     rule.roles,
     rule.purposes,

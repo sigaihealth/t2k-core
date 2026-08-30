@@ -533,6 +533,22 @@ describePostgres("Postgres reference lifecycle", () => {
     );
     expect(await lifecycle.migrate()).toBe(2);
     await expectAcceptanceActivationIndexes();
+
+    await pool.query(
+      "ALTER TABLE t2k_reference.reward_assessments DROP COLUMN observation_set_hash"
+    );
+    expect(await lifecycle.migrate()).toBe(2);
+    expect(
+      (
+        await pool.query<{ is_nullable: string }>(
+          `SELECT is_nullable
+           FROM information_schema.columns
+           WHERE table_schema = 't2k_reference'
+             AND table_name = 'reward_assessments'
+             AND column_name = 'observation_set_hash'`
+        )
+      ).rows
+    ).toEqual([{ is_nullable: "YES" }]);
   });
 
   it("persists the complete governed loop through promotion and rollback", async () => {
@@ -564,6 +580,40 @@ describePostgres("Postgres reference lifecycle", () => {
         proposer
       )
     ).rejects.toThrow("missing required path");
+    await expect(
+      lifecycle.createDecisionContext(
+        {
+          contextKey: "context:inherited-state-contract",
+          question: "Inherited state must not satisfy the contract",
+          decisionType: "operations.dispatch_overflow",
+          stateSnapshot: {},
+          objective: { maximize: "harborlight.on_time_completion_rate" },
+          learningContract: {
+            ...learningContract,
+            stateSchema: { type: "object", required: ["constructor"] },
+          },
+        },
+        proposer
+      )
+    ).rejects.toThrow("missing required path constructor");
+    const sparseFacts: Array<{ objectValue: number }> = [];
+    sparseFacts.length = 1;
+    const inheritedArrayPrototype = Object.create(Array.prototype);
+    inheritedArrayPrototype[0] = { objectValue: 0.8 };
+    Object.setPrototypeOf(sparseFacts, inheritedArrayPrototype);
+    await expect(
+      lifecycle.createDecisionContext(
+        {
+          contextKey: "context:sparse-state-contract",
+          question: "Sparse inherited state must not satisfy the contract",
+          decisionType: "operations.dispatch_overflow",
+          stateSnapshot: { facts: sparseFacts },
+          objective: { maximize: "harborlight.on_time_completion_rate" },
+          learningContract,
+        },
+        proposer
+      )
+    ).rejects.toThrow("missing required path facts.0.objectValue");
     await expect(
       lifecycle.createDecisionContext(
         {
@@ -783,6 +833,50 @@ describePostgres("Postgres reference lifecycle", () => {
       )
     ).rejects.toThrow("append-only");
   }, 120_000);
+
+  it("reads snapshots and event verification through one repeatable-read client", async () => {
+    const queries: string[] = [];
+    let connectCount = 0;
+    let directQueryCount = 0;
+    let releaseCount = 0;
+    const trackingPool = {
+      connect: async () => {
+        connectCount += 1;
+        const client = await pool.connect();
+        return {
+          query: (text: string, values?: unknown[]) => {
+            queries.push(text);
+            return client.query(text, values);
+          },
+          release: () => {
+            releaseCount += 1;
+            client.release();
+          },
+        };
+      },
+      query: async () => {
+        directQueryCount += 1;
+        throw new Error("snapshot bypassed its repeatable-read client");
+      },
+    } as unknown as Pool;
+    const trackedLifecycle = new PostgresReferenceLifecycle({
+      pool: trackingPool,
+    });
+
+    const snapshot = await trackedLifecycle.snapshot();
+
+    expect(snapshot.eventChain.valid).toBe(true);
+    expect(connectCount).toBe(1);
+    expect(releaseCount).toBe(1);
+    expect(directQueryCount).toBe(0);
+    expect(queries[0]).toBe(
+      "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+    );
+    expect(queries.at(-1)).toBe("COMMIT");
+    expect(
+      queries.filter((query) => query.includes("lifecycle_events"))
+    ).toHaveLength(1);
+  });
 
   it("persists governed reconciliation lineage and exact rollback", async () => {
     const receiptResult = await pool.query<{ id: string }>(
@@ -2239,6 +2333,43 @@ describePostgres("Postgres reference lifecycle", () => {
       },
       proposer
     );
+    const initialAssessment = await lifecycle.assessReward(
+      episode.id,
+      { assessmentKey: "assessment:before-new-observation" },
+      rewardEngine
+    );
+    expect(initialAssessment).toMatchObject({
+      lifecycleStatus: "complete",
+      observationSetHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    await lifecycle.recordObservation(
+      episode.id,
+      {
+        measureRef: rewardSpec[1]!.measureRef,
+        observedValue: 0.7,
+        baselineValue: null,
+        observationWindow: "7d",
+        sourceRefs: ["fixture://harborlight/guardrail/crew-load-safe"],
+        observedAt: "2026-03-01T00:00:00.000Z",
+      },
+      proposer
+    );
+    await expect(
+      lifecycle.closeEpisode(
+        episode.id,
+        "Do not close against an unassessed observation.",
+        reviewer
+      )
+    ).rejects.toThrow("current observation set");
+    const safeAssessment = await lifecycle.assessReward(
+      episode.id,
+      { assessmentKey: "assessment:before-guardrail-violation" },
+      rewardEngine
+    );
+    expect(safeAssessment).toMatchObject({ lifecycleStatus: "complete" });
+    expect(safeAssessment.observationSetHash).not.toBe(
+      initialAssessment.observationSetHash
+    );
     await lifecycle.recordObservation(
       episode.id,
       {
@@ -2246,11 +2377,18 @@ describePostgres("Postgres reference lifecycle", () => {
         observedValue: 0.95,
         baselineValue: null,
         observationWindow: "7d",
-        sourceRefs: ["fixture://harborlight/guardrail/crew-load"],
-        observedAt: "2026-03-01T00:00:00.000Z",
+        sourceRefs: ["fixture://harborlight/guardrail/crew-load-violation"],
+        observedAt: "2026-03-02T00:00:00.000Z",
       },
       proposer
     );
+    await expect(
+      lifecycle.closeEpisode(
+        episode.id,
+        "Do not close before assessing the later guardrail violation.",
+        reviewer
+      )
+    ).rejects.toThrow("current observation set");
     const assessment = await lifecycle.assessReward(
       episode.id,
       { assessmentKey: "assessment:guardrail-violation" },
@@ -2260,6 +2398,7 @@ describePostgres("Postgres reference lifecycle", () => {
       lifecycleStatus: "guardrail_violation",
       scalarReward: null,
       evaluationReward: -1,
+      observationSetHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     await expect(
       lifecycle.closeEpisode(

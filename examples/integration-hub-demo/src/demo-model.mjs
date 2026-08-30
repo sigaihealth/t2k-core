@@ -232,15 +232,20 @@ function buildAccessChecks(policy, results) {
   };
 }
 
+function permutations(values) {
+  if (values.length <= 1) return [[...values]];
+  return values.flatMap((value, index) =>
+    permutations(values.filter((_item, itemIndex) => itemIndex !== index)).map(
+      (remaining) => [value, ...remaining]
+    )
+  );
+}
+
 function orderChecks(results, authorityPolicy) {
-  const orders = [
-    { label: "source file order", results },
-    { label: "reverse order", results: [...results].reverse() },
-    {
-      label: "rotated order",
-      results: results.length > 1 ? [...results.slice(1), results[0]] : results,
-    },
-  ];
+  const orders = permutations(results).map((orderedResults, index) => ({
+    label: index === 0 ? "source file order" : `permutation ${index + 1}`,
+    results: orderedResults,
+  }));
   const proposals = orders.map(({ label, results: orderedResults }) => ({
     label,
     proposal: reconcileCanonicalRecords({

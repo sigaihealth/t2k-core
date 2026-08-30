@@ -5,7 +5,7 @@ a Decision Context, two executable policies, and disjoint replay evidence.
 The existing decision-loop project remains the default profile.
 
 ```bash
-npx create-t2k@0.4.1 my-decision-loop
+npx create-t2k@0.4.2 my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -56,7 +56,7 @@ before enabling database access or agent writes.
 Use `--no-install` to generate files without running `npm install`:
 
 ```bash
-npx create-t2k@0.4.1 my-decision-loop --no-install
+npx create-t2k@0.4.2 my-decision-loop --no-install
 ```
 
 The normal command installs dependencies for you. Run `npm install` inside the
@@ -70,7 +70,7 @@ is required.
 Generate a focused, fully synthetic source-integration project explicitly:
 
 ```bash
-npx create-t2k@0.4.1 my-integration-hub --profile integration-hub
+npx create-t2k@0.4.2 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```

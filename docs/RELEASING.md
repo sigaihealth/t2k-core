@@ -26,6 +26,17 @@ to an unrelated npm user and must not appear in package names or imports.
 8. `@t2kai/core` is published before a `create-t2k` version that depends on it.
 9. `@t2kai/core` is published before an `@t2kai/mcp` version that depends on it.
 
+The core release workflow resolves the pushed tag through GitHub's Git Database
+API and requires an annotated tag whose signature GitHub reports as verified. It
+binds that exact tag-object and peeled commit to the local checkout, fetches
+`origin/main`, and requires the release commit to be an ancestor of the fetched
+branch before any OIDC-backed publish can run. Lightweight, unsigned, moved, and
+off-main tags fail closed.
+
+The local verifier checks tag/version equality, annotated-tag structure,
+checkout identity, and `origin/main` ancestry. GitHub signature verification is
+performed separately by the mandatory API step after the tag is pushed.
+
 ## Publish
 
 Use explicit one-shot SSH-signing configuration so the command does not depend
@@ -36,6 +47,7 @@ for different packages.
 ```bash
 git -c gpg.format=ssh -c user.signingkey=/path/to/release_signing_key \
   tag -s core-vX.Y.Z -m "@t2kai/core X.Y.Z"
+npm run release:verify --workspace @t2kai/core -- core-vX.Y.Z
 git push origin core-vX.Y.Z
 # Wait for the core workflow and registry verification before continuing.
 
