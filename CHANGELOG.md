@@ -6,6 +6,45 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-30
+
+### Added
+
+- A separate `create-t2k --profile integration-hub` project that maps two
+  independently governed synthetic sources onto one canonical identity,
+  preserves conflicting evidence, applies an explicit authority policy, proves
+  input-order determinism, and emits a pending human-review packet.
+- Immutable Postgres reconciliation proposals and explicit human dispositions
+  with required-role, proposer/reviewer separation, content-hash, identity,
+  and current-base checks.
+- Append-only accepted canonical revisions and activation history, complete
+  repeatable-read lineage, exact ancestor rollback, and governed reactivation
+  of an existing revision without rewriting canonical content.
+- Immutable snapshots and digests for linked lifecycle execution receipts,
+  composite lineage constraints, serialized idempotent transitions, and
+  fail-closed migration and direct-SQL integrity checks.
+- A runnable integration-hub tutorial covering ontology-layer architecture,
+  human-plus-AI roles, safe agent computation, persistence, and production
+  boundaries.
+
+### Compatibility
+
+- Existing `create-t2k <directory>` behavior remains the default
+  `decision-loop` profile. The integration-hub profile is opt-in.
+- Existing well-formed source-mapping and lifecycle callers remain compatible;
+  the reconciliation persistence API and schema are additive.
+
+## [`@t2kai/mcp` 0.3.0] - 2026-08-30
+
+### Added
+
+- Read-only tools for governed source mapping, canonical-reconciliation
+  proposals, reversible entity-link proposals, and purpose-limited access
+  evaluation in the database-free safe default.
+- Strict nested tool schemas and protocol/package tests that reject unknown
+  persistence, credential, merge, and approval controls; verify deterministic
+  and tamper-evident outputs; and preserve the human-governance boundary.
+
 ## [0.3.0] - 2026-08-29
 
 ### Added

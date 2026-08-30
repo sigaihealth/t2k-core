@@ -1,0 +1,24 @@
+{
+  "sourceSystem": "synthetic-registry-beta",
+  "sourceLocator": "synthetic://registry-beta/party/BETA-7001",
+  "sourceRecordKey": "BETA-7001",
+  "sourceSchemaVersion": "party-record-v1",
+  "eventTime": "2026-08-29T15:01:00.000Z",
+  "observedTime": "2026-08-29T15:01:08.000Z",
+  "authenticationState": "unknown",
+  "authorityRef": "synthetic_registry_beta",
+  "dataClassification": "synthetic_demo",
+  "purposeTags": ["integration_hub_demo"],
+  "retentionPolicy": {
+    "policyId": "synthetic-demo-30d",
+    "expiresAt": "2026-09-28"
+  },
+  "payload": {
+    "record_id": "BETA-7001",
+    "party_key": "SHARED-0042",
+    "display_name": "Sample Service Company",
+    "registry_state": "pending",
+    "event_time": "2026-08-29T15:01:00.000Z",
+    "observed_time": "2026-08-29T15:01:08.000Z"
+  }
+}

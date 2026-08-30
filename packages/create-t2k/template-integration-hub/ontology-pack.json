@@ -1,0 +1,143 @@
+{
+  "$schema": "https://t2k.ai/schemas/t2k-ontology-pack.v1.schema.json",
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "demo.integration-hub",
+  "label": "Synthetic Integration Hub",
+  "description": "Maps independently governed synthetic party records while preserving source evidence and human review.",
+  "packKind": "project",
+  "status": "accepted",
+  "scope": {
+    "domain": "synthetic_integration",
+    "description": "A non-production demonstration of canonical mapping and reconciliation.",
+    "jurisdictions": ["DEMO"],
+    "industries": [],
+    "businessStages": [],
+    "organizationSizes": [],
+    "exclusions": ["production data", "identity proofing", "autonomous truth promotion"]
+  },
+  "objectTypes": [
+    {
+      "id": "party",
+      "label": "Party",
+      "family": "Common party",
+      "nodeKind": "operating-entity",
+      "identity": ["party_id"],
+      "purpose": "A canonical party proposal whose values retain source-level evidence.",
+      "properties": [
+        {
+          "id": "party_id",
+          "valueType": "string",
+          "required": true,
+          "description": "Synthetic canonical identity key.",
+          "authorityDomain": "identity",
+          "temporal": false
+        },
+        {
+          "id": "display_name",
+          "valueType": "string",
+          "required": false,
+          "description": "A source-provided display-name candidate.",
+          "authorityDomain": "identity",
+          "temporal": true
+        },
+        {
+          "id": "registry_state",
+          "valueType": "string",
+          "required": false,
+          "description": "A source-provided registry-state candidate.",
+          "authorityDomain": "registry_status",
+          "temporal": true
+        }
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "synthetic_party_record_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "independent_registry_record",
+      "sourceLocator": "synthetic://party-registry",
+      "sourceSchemaVersion": "party-record-v1",
+      "object": "party",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.party_key",
+          "targetProperty": "party_id",
+          "required": true,
+          "normalizations": ["trim", "uppercase"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.display_name",
+          "targetProperty": "display_name",
+          "required": true,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "preserve_all"
+        },
+        {
+          "sourcePath": "$.registry_state",
+          "targetProperty": "registry_state",
+          "required": true,
+          "normalizations": ["trim", "lowercase"],
+          "valueMap": {},
+          "authorityDomain": "registry_status",
+          "conflictPolicy": "prefer_authority"
+        }
+      ],
+      "targetIdentity": ["party_id"],
+      "idempotencyPath": "$.record_id",
+      "eventTimePath": "$.event_time",
+      "observedTimePath": "$.observed_time",
+      "authority": "source_specific",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "always",
+      "replayable": true
+    }
+  ],
+  "authorityModel": [
+    {
+      "domain": "identity",
+      "authority": "human_reviewed_source_evidence",
+      "status": "accepted",
+      "scope": "Identity candidates remain proposals until a human-owned process accepts them."
+    },
+    {
+      "domain": "registry_status",
+      "authority": "versioned_priority_policy",
+      "status": "accepted",
+      "scope": "Priority selects a candidate within the proposal and does not establish truth."
+    }
+  ],
+  "eventTypes": [
+    {
+      "id": "source_record_observed",
+      "source": "integration_hub",
+      "createsOrUpdates": "party",
+      "humanCheckpoint": "required"
+    }
+  ],
+  "reasoningFunctions": [
+    {
+      "id": "propose_canonical_reconciliation",
+      "input": "receipt-bound source evidence and versioned authority policy",
+      "output": "deterministic non-mutating proposal",
+      "humanCheckpoint": "required"
+    }
+  ],
+  "extensions": {
+    "dataPolicy": {
+      "syntheticOnly": true,
+      "authenticationProvided": false,
+      "truthPromotionAllowed": false
+    }
+  }
+}

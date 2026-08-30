@@ -25,6 +25,9 @@ network, private packs, and customer data are separate products.
 - deterministic canonical-record reconciliation with receipt self-consistency
   checks, explicit authority ranking, preserved alternatives, and non-mutating
   proposals;
+- persisted reconciliation review with immutable proposals and human
+  dispositions, snapshotted execution evidence, append-only canonical
+  revisions, lineage, exact rollback, and governed reactivation;
 - reversible, evidence-scored entity-resolution proposals that route ambiguous
   candidates to human review;
 - deterministic purpose-limited access evaluation with explicit-deny
@@ -35,9 +38,11 @@ network, private packs, and customer data are separate products.
 - a Postgres reference lifecycle with frozen contexts, authorization, execution
   receipts, observations, promotion, exact rollback, and a hash-chained ledger;
 - conformance fixtures and an independently runnable synthetic example;
-- a tested `create-t2k` scaffolder for a local governed-decision project;
+- a tested `create-t2k` scaffolder for local governed-decision and
+  integration-hub projects;
 - a safe local stdio MCP adapter with read-only defaults, a fixed agent identity
-  for opt-in writes, and no agent-accessible human-governance transitions.
+  for opt-in lifecycle writes, four non-mutating integration tools, and no
+  agent-accessible human-governance transitions.
 
 ## Quick Start
 
@@ -64,6 +69,20 @@ npm run lifecycle
 Use `npm run db:down` to stop the local containers while preserving the database
 volume. Use the explicitly destructive `npm run db:reset` only when you intend
 to delete the disposable lifecycle data.
+
+Generate a governed integration-hub project instead:
+
+```bash
+npx create-t2k@latest my-integration-hub --profile integration-hub
+cd my-integration-hub
+npm start
+```
+
+This profile maps two independent synthetic sources onto one canonical party,
+preserves conflicting evidence, applies an explicit authority policy, proves
+order-independent reconciliation, and emits a pending human-review packet. See
+the [integration-hub tutorial](docs/INTEGRATION_HUB_TUTORIAL.md) for the full
+ontology, agent, persistence, lineage, rollback, and reactivation path.
 
 ## Explore the Repository Examples
 
@@ -119,9 +138,11 @@ Connect an MCP host without a database or credentials:
 }
 ```
 
-This safe default exposes ontology validation and compilation plus reference
-policy, replay, and reward computation. See [docs/MCP.md](docs/MCP.md) before
-enabling lifecycle persistence or agent writes.
+This safe default exposes ontology validation and compilation; reference
+policy, replay, and reward computation; and read-only source mapping,
+reconciliation, entity-link, and purpose-access evaluation. See
+[docs/MCP.md](docs/MCP.md) before enabling lifecycle persistence or agent
+writes.
 
 ## Install the Packages
 
@@ -148,9 +169,10 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.3.0` includes the governed source-mapping,
-canonical-reconciliation, entity-resolution, and purpose-access exports
-documented in the core guide.
+`@t2kai/core@0.4.0` includes the governed source-mapping,
+canonical-reconciliation, entity-resolution, and purpose-access exports plus
+the persisted reconciliation review and lineage path documented in the core
+guide.
 
 See [packages/core/README.md](packages/core/README.md) for API examples and
 [packages/mcp/README.md](packages/mcp/README.md) for MCP modes and security, and
@@ -164,7 +186,7 @@ non-normative pre-v1 migration path is documented separately in
 | --- | --- |
 | Specification and schema | Managed semantic registry |
 | Compiler and typed contracts | Multi-tenant Studio operations |
-| Reference policy, reward, replay, and local Postgres lifecycle | Fleet shadow/canary orchestration |
+| Reference policy, reward, replay, local Postgres lifecycle, and human-reviewed canonical revision history | Fleet shadow/canary orchestration |
 | Governed source mapping, non-mutating canonical reconciliation, reversible entity resolution, and purpose-access receipts | Managed connector transport, enterprise IAM enforcement, and compliance operations |
 | Scaffolder, local MCP adapter, conformance kit, and synthetic examples | Private packs and verified fact corpus |
 | API client | Enterprise identity, managed service operations, and SLAs |

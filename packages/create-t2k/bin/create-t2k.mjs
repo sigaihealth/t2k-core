@@ -18,14 +18,16 @@ Usage:
   create-t2k [directory] [options]
 
 Options:
+  --profile <name>  Generate decision-loop (default) or integration-hub
   --no-install   Generate the project without installing dependencies
   --yes          Accept non-interactive defaults
   -h, --help     Show this help
   -v, --version  Show the package version
 
 The default directory is my-t2k-project. Existing non-empty directories are
-never overwritten. Generated projects include decision and optional
-persisted-lifecycle examples.`;
+never overwritten. The decision-loop profile includes decision and optional
+persisted-lifecycle examples. The integration-hub profile maps independent
+synthetic sources into a non-mutating reconciliation proposal for human review.`;
 
 try {
   const options = parseArguments(process.argv.slice(2));
@@ -37,6 +39,7 @@ try {
     await scaffoldProject({
       targetDirectory: options.targetDirectory,
       install: options.install,
+      profile: options.profile,
       cwd: process.cwd(),
       stdout: process.stdout,
     });

@@ -1,6 +1,6 @@
 {
   "name": "create-t2k",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Create a local T2K governed-decision project in minutes.",
   "license": "Apache-2.0",
   "keywords": [
@@ -20,7 +20,7 @@
   },
   "type": "module",
   "bin": {
-    "create-t2k": "./bin/create-t2k.mjs"
+    "create-t2k": "bin/create-t2k.mjs"
   },
   "engines": {
     "node": ">=20.10.0"
@@ -29,6 +29,7 @@
     "bin",
     "src",
     "template",
+    "template-integration-hub",
     "README.md",
     "LICENSE"
   ],

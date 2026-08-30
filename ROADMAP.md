@@ -43,6 +43,24 @@ Dates are deliberately omitted until maintainers can defend them.
 - Safer generated-project database lifecycle commands: `db:down` preserves the
   volume and the explicitly destructive `db:reset` removes it
 
+## Shipped in 0.4
+
+- A distinct `create-t2k --profile integration-hub` quickstart with two
+  independent synthetic sources, shared canonical identity, preserved
+  conflicts, explicit authority ranking, deterministic reconciliation, and a
+  pending human-review evidence packet
+- Immutable reconciliation-proposal persistence with explicit human
+  dispositions, required-role and proposer/reviewer separation checks, and
+  approval-gated accepted canonical revisions
+- Append-only canonical revision and activation history, repeatable-read
+  lineage, stale-base rejection, exact ancestor rollback, and governed
+  reactivation of an existing revision
+- Snapshotted and digested linked execution evidence, composite lineage
+  constraints, serialized idempotent transitions, and fail-closed migrations
+- A technical integration-hub tutorial covering the ontology layer,
+  human-plus-AI roles, safe agent workflow, persistence gates, and production
+  boundaries
+
 ## Shipped in `@t2kai/mcp` 0.1
 
 - Local stdio adapter over the same public compiler, policy, replay, reward, and lifecycle contracts
@@ -55,6 +73,17 @@ Dates are deliberately omitted until maintainers can defend them.
 
 - Runtime dependency aligned with `@t2kai/core@^0.3.0` so MCP installations use
   the same released validation and reference runtime as direct core consumers
+
+## Shipped in `@t2kai/mcp` 0.3
+
+- Safe-default read-only tools for governed source mapping, non-mutating
+  canonical reconciliation, reversible entity-link proposals, and
+  purpose-limited access evaluation
+- Strict closed-world input schemas that reject persistence, credentials,
+  merge requests, caller-supplied approval state, and unsafe object keys
+- Protocol and packed-stdio coverage for determinism, receipt integrity,
+  default deny, malformed expansive inputs, and the existing human-governance
+  boundary
 
 ## Next
 

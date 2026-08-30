@@ -5,32 +5,28 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { scaffoldProject } from "../src/scaffold.mjs";
+import { exerciseIntegrationHubExperiments } from "./integration-hub-smoke-helpers.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const coreRoot = path.join(workspaceRoot, "packages/core");
 const smokeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "create-t2k-smoke-"));
 
-try {
+async function installGeneratedProject({
+  targetDirectory,
+  profile,
+  coreTarball,
+}) {
   const project = await scaffoldProject({
-    targetDirectory: "harborlight-quickstart",
+    targetDirectory,
+    profile,
     install: false,
     cwd: smokeRoot,
     stdout: { write() {} },
   });
-  const packResult = JSON.parse(
-    execFileSync(
-      "npm",
-      ["pack", coreRoot, "--pack-destination", smokeRoot, "--silent", "--json"],
-      { cwd: workspaceRoot, encoding: "utf8" }
-    )
-  );
   const manifestPath = path.join(project.targetPath, "package.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
-  manifest.dependencies["@t2kai/core"] = `file:${path.join(
-    smokeRoot,
-    packResult[0].filename
-  )}`;
+  manifest.dependencies["@t2kai/core"] = `file:${coreTarball}`;
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
   execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], {
@@ -41,10 +37,14 @@ try {
     cwd: project.targetPath,
     encoding: "utf8",
   });
-  if (!output.includes('"status": "passed"')) {
-    throw new Error("Generated project did not produce a passing computed replay.");
+  if (profile === "decision-loop") {
+    if (!output.includes('"status": "passed"')) {
+      throw new Error("Generated project did not produce a passing computed replay.");
+    }
+  } else {
+    await exerciseIntegrationHubExperiments(project.targetPath);
   }
-  if (process.env.T2K_TEST_DATABASE_URL) {
+  if (profile === "decision-loop" && process.env.T2K_TEST_DATABASE_URL) {
     const lifecycleOutput = execFileSync("npm", ["run", "lifecycle"], {
       cwd: project.targetPath,
       encoding: "utf8",
@@ -56,7 +56,28 @@ try {
       throw new Error("Generated project did not complete its persisted lifecycle.");
     }
   }
-  console.log("Generated create-t2k project installed and ran successfully.");
+}
+
+try {
+  const packResult = JSON.parse(
+    execFileSync(
+      "npm",
+      ["pack", coreRoot, "--pack-destination", smokeRoot, "--silent", "--json"],
+      { cwd: workspaceRoot, encoding: "utf8" }
+    )
+  );
+  const coreTarball = path.join(smokeRoot, packResult[0].filename);
+  await installGeneratedProject({
+    targetDirectory: "harborlight-quickstart",
+    profile: "decision-loop",
+    coreTarball,
+  });
+  await installGeneratedProject({
+    targetDirectory: "integration-hub-quickstart",
+    profile: "integration-hub",
+    coreTarball,
+  });
+  console.log("Generated create-t2k profiles installed and ran successfully.");
 } finally {
   await fs.rm(smokeRoot, { recursive: true, force: true });
 }

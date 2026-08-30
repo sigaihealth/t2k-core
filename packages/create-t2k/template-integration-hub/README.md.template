@@ -1,0 +1,45 @@
+# {{PROJECT_NAME}}
+
+This is a fully synthetic T2K integration-hub quickstart. It demonstrates how
+two independently governed source records can be mapped into one canonical
+identity without silently merging evidence or declaring either source true.
+
+```bash
+npm install
+npm start
+```
+
+The run performs these explicit steps:
+
+1. validate and compile `ontology-pack.json`;
+2. canonically discover and map every regular `source-records/*.json` file with
+   one versioned mapping;
+3. preserve all conflicting display-name candidates;
+4. apply `authority-policy.json` to select a registry-state candidate within
+   the proposal;
+5. repeat reconciliation in the opposite input order; and
+6. emit a deterministic evidence packet for human review.
+
+The selected registry-state value is only a candidate within a non-mutating
+proposal. No source record is changed and no value becomes accepted truth.
+Both source envelopes deliberately use `authenticationState: "unknown"`.
+Production callers must authenticate or attest sources and policies outside
+this example.
+
+Each complete source-mapping receipt is included in the evidence packet before
+the packet hash is computed. The receipt, policy, proposal, and packet hashes
+are unkeyed deterministic self-consistency checks. They are not signatures,
+authentication tokens, or proof that an assertion is true.
+
+## Explore the hub
+
+- Change a source value in `source-records/` and inspect the preserved evidence.
+- Reverse the priorities in `authority-policy.json`, rerun, and inspect the
+  changed proposed authority selection.
+- Add a third synthetic `.json` source with the same `party_key`; it is
+  discovered automatically on the next run.
+- Replace `humanCheckpoint: "always"` only after defining a real review and
+  authorization boundary in the calling system.
+
+Keep real people, credentials, customer vocabulary, and private source
+locations out of this project.

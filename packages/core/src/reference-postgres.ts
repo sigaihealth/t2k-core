@@ -30,6 +30,8 @@ import type {
 const GENESIS_EVENT_HASH = "0".repeat(64);
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const UUID_CANONICAL_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export type ReferenceActorType = "human" | "agent" | "system";
 
@@ -44,6 +46,118 @@ export interface PostgresReferenceLifecycleOptions {
   applicationName?: string;
   maxConnections?: number;
   ssl?: PoolConfig["ssl"];
+}
+
+export interface ReferenceReconciliationProposalHashInput {
+  proposalKey: string;
+  objectType: string;
+  objectKey: string;
+  baseRevisionId?: string | null;
+  proposedContent: JsonObject;
+  /** Immutable caller evidence, including source-mapping receipt bodies or hashes. */
+  evidence: JsonObject;
+  /**
+   * IDs from this lifecycle's persisted execution_receipts table. Each linked
+   * row is snapshotted and independently digested with the proposal. This is
+   * not a persistence API for in-memory SourceMappingReceipt values.
+   */
+  executionReceiptIds?: string[];
+  requiredReviewerRole: string;
+  rationale: string;
+}
+
+export interface ReferenceReconciliationObjectRecord {
+  id: string;
+  objectType: string;
+  objectKey: string;
+  activeRevisionId: string | null;
+  createdByActorType: ReferenceActorType;
+  createdByActorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceReconciliationProposalRecord {
+  id: string;
+  proposalKey: string;
+  idempotencyKey: string;
+  canonicalObjectId: string;
+  objectType: string;
+  objectKey: string;
+  baseRevisionId: string | null;
+  proposedContent: JsonObject;
+  contentHash: string;
+  evidence: JsonObject;
+  executionReceiptIds: string[];
+  executionReceipts: ReferenceReconciliationExecutionReceiptEvidence[];
+  executionEvidenceHash: string;
+  requiredReviewerRole: string;
+  rationale: string;
+  proposalHash: string;
+  proposedByActorType: ReferenceActorType;
+  proposedByActorId: string;
+  createdAt: string;
+}
+
+export interface ReferenceReconciliationDispositionRecord {
+  id: string;
+  proposalId: string;
+  dispositionVersion: number;
+  expectedDispositionVersion: number;
+  decision: "approved" | "rejected";
+  reviewerRole: string;
+  rationale: string;
+  idempotencyKey: string;
+  reviewedByActorType: "human";
+  reviewedByActorId: string;
+  reviewedAt: string;
+}
+
+export interface ReferenceReconciliationRevisionRecord {
+  id: string;
+  canonicalObjectId: string;
+  revisionNumber: number;
+  content: JsonObject;
+  contentHash: string;
+  parentRevisionId: string | null;
+  proposalId: string;
+  approvalDispositionId: string;
+  acceptedByActorType: "human";
+  acceptedByActorId: string;
+  acceptedByRole: string;
+  acceptedAt: string;
+}
+
+export interface ReferenceReconciliationActivationRecord {
+  sequence: number;
+  id: string;
+  canonicalObjectId: string;
+  activatedRevisionId: string;
+  previousRevisionId: string | null;
+  activationType: "acceptance" | "rollback" | "reactivation";
+  sourceProposalId: string | null;
+  approvalDispositionId: string | null;
+  rationale: string;
+  idempotencyKey: string;
+  activatedByActorType: "human";
+  activatedByActorId: string;
+  activatedByRole: string;
+  createdAt: string;
+}
+
+export interface ReferenceReconciliationExecutionReceiptEvidence {
+  receiptId: string;
+  receiptDigest: string;
+  receiptSnapshot: JsonObject;
+}
+
+export interface ReferenceReconciliationLineageRecord {
+  object: ReferenceReconciliationObjectRecord;
+  activeRevision: ReferenceReconciliationRevisionRecord | null;
+  proposals: ReferenceReconciliationProposalRecord[];
+  dispositions: ReferenceReconciliationDispositionRecord[];
+  revisions: ReferenceReconciliationRevisionRecord[];
+  activations: ReferenceReconciliationActivationRecord[];
 }
 
 export interface ReferencePolicyRecord {
@@ -327,6 +441,38 @@ function semanticHash(value: unknown) {
     .digest("hex");
 }
 
+export function computeReferenceReconciliationExecutionReceiptDigest(
+  receiptSnapshot: JsonObject
+) {
+  return semanticHash(requireObject(receiptSnapshot, "receiptSnapshot"));
+}
+
+export function computeReferenceReconciliationProposalHash(
+  input: ReferenceReconciliationProposalHashInput
+) {
+  const executionReceiptIds = normalizeOptionalUniqueUuids(
+    input.executionReceiptIds,
+    "executionReceiptIds"
+  );
+  return semanticHash({
+    proposalKey: requireText(input.proposalKey, "proposalKey"),
+    objectType: requireText(input.objectType, "objectType"),
+    objectKey: requireText(input.objectKey, "objectKey"),
+    baseRevisionId:
+      input.baseRevisionId === undefined || input.baseRevisionId === null
+        ? null
+        : requireUuid(input.baseRevisionId, "baseRevisionId"),
+    proposedContent: requireObject(input.proposedContent, "proposedContent"),
+    evidence: requireObject(input.evidence, "evidence"),
+    executionReceiptIds,
+    requiredReviewerRole: requireText(
+      input.requiredReviewerRole,
+      "requiredReviewerRole"
+    ),
+    rationale: requireText(input.rationale, "rationale"),
+  });
+}
+
 function compareSemanticVersions(left: string, right: string) {
   const leftMatch = SEMVER_PATTERN.exec(left);
   const rightMatch = SEMVER_PATTERN.exec(right);
@@ -408,11 +554,60 @@ function requireText(value: unknown, label: string) {
   return value.trim();
 }
 
+function requireSha256(value: unknown, label: string) {
+  const hash = requireText(value, label).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
+    throw new ReferenceLifecycleValidationError(
+      `${label} must be a lowercase SHA-256 digest.`
+    );
+  }
+  return hash;
+}
+
+function requireUuid(value: unknown, label: string) {
+  const supplied = requireText(value, label);
+  const unwrapped =
+    supplied.startsWith("{") && supplied.endsWith("}")
+      ? supplied.slice(1, -1)
+      : supplied;
+  const compact = unwrapped.replaceAll("-", "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(compact)) {
+    throw new ReferenceLifecycleValidationError(`${label} must be a UUID.`);
+  }
+  const canonical = [
+    compact.slice(0, 8),
+    compact.slice(8, 12),
+    compact.slice(12, 16),
+    compact.slice(16, 20),
+    compact.slice(20),
+  ].join("-");
+  if (!UUID_CANONICAL_PATTERN.test(canonical)) {
+    throw new ReferenceLifecycleValidationError(`${label} must be a UUID.`);
+  }
+  return canonical;
+}
+
 function requireObject(value: unknown, label: string): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new ReferenceLifecycleValidationError(`${label} must be an object.`);
   }
   return value as JsonObject;
+}
+
+function deepFreezeJson<T extends JsonValue>(value: T): T {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreezeJson(item);
+  } else if (value && typeof value === "object") {
+    for (const item of Object.values(value)) deepFreezeJson(item);
+  }
+  return Object.freeze(value);
+}
+
+function immutableJsonObjectSnapshot(value: unknown, label: string) {
+  const cloned = stableValue(
+    JSON.parse(json(requireObject(value, label)))
+  ) as JsonObject;
+  return deepFreezeJson(cloned);
 }
 
 function requireActor(actor: ReferenceLifecycleActor) {
@@ -476,6 +671,44 @@ function requireUniqueIds(values: string[], label: string) {
     throw new ReferenceLifecycleValidationError(`${label} must not contain duplicates.`);
   }
   return normalized;
+}
+
+function normalizeOptionalUniqueIds(
+  values: string[] | undefined,
+  label: string
+) {
+  if (values === undefined) return [];
+  if (!Array.isArray(values)) {
+    throw new ReferenceLifecycleValidationError(`${label} must be an array.`);
+  }
+  const normalized = values.map((value, index) =>
+    requireText(value, `${label}[${index}]`)
+  );
+  if (new Set(normalized).size !== normalized.length) {
+    throw new ReferenceLifecycleValidationError(`${label} must not contain duplicates.`);
+  }
+  return normalized;
+}
+
+function normalizeOptionalUniqueUuids(
+  values: string[] | undefined,
+  label: string
+) {
+  if (values === undefined) return [];
+  if (!Array.isArray(values)) {
+    throw new ReferenceLifecycleValidationError(`${label} must be an array.`);
+  }
+  const normalized = values.map((value, index) =>
+    requireUuid(value, `${label}[${index}]`)
+  );
+  if (new Set(normalized).size !== normalized.length) {
+    throw new ReferenceLifecycleValidationError(`${label} must not contain duplicates.`);
+  }
+  return normalized;
+}
+
+function sameNullableId(left: string | null, right: string | null) {
+  return left === right;
 }
 
 function valueAtPath(value: unknown, path: string): unknown {
@@ -690,6 +923,137 @@ async function one<Row extends QueryResultRow>(
   return result.rows[0];
 }
 
+function validateReconciliationProposalRecord(
+  proposal: ReferenceReconciliationProposalRecord
+) {
+  const receiptIds = proposal.executionReceipts.map(
+    (receipt) => receipt.receiptId
+  );
+  const expectedProposalHash = computeReferenceReconciliationProposalHash({
+    proposalKey: proposal.proposalKey,
+    objectType: proposal.objectType,
+    objectKey: proposal.objectKey,
+    baseRevisionId: proposal.baseRevisionId,
+    proposedContent: proposal.proposedContent,
+    evidence: proposal.evidence,
+    executionReceiptIds: proposal.executionReceiptIds,
+    requiredReviewerRole: proposal.requiredReviewerRole,
+    rationale: proposal.rationale,
+  });
+  if (
+    semanticHash(proposal.proposedContent) !== proposal.contentHash ||
+    expectedProposalHash !== proposal.proposalHash ||
+    JSON.stringify(receiptIds) !==
+      JSON.stringify(proposal.executionReceiptIds) ||
+    proposal.executionReceipts.some(
+      (receipt) =>
+        computeReferenceReconciliationExecutionReceiptDigest(
+          receipt.receiptSnapshot
+        ) !== receipt.receiptDigest
+    ) ||
+    semanticHash(proposal.executionReceipts) !== proposal.executionEvidenceHash
+  ) {
+    throw new ReferenceLifecycleValidationError(
+      "The persisted reconciliation proposal or evidence failed its hash check."
+    );
+  }
+  return proposal;
+}
+
+async function loadReconciliationProposal(
+  client: PoolClient,
+  proposalId: string
+) {
+  const row = await one(
+    client,
+    `SELECT proposals.*,
+            COALESCE(
+              (
+                SELECT ARRAY_AGG(links.receipt_id ORDER BY links.position)
+                FROM t2k_reference.reconciliation_proposal_receipts AS links
+                WHERE links.proposal_id = proposals.id
+              ),
+              ARRAY[]::uuid[]
+            ) AS execution_receipt_ids
+            ,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'receiptId', links.receipt_id,
+                    'receiptDigest', links.receipt_digest,
+                    'receiptSnapshot', links.receipt_snapshot
+                  ) ORDER BY links.position
+                )
+                FROM t2k_reference.reconciliation_proposal_receipts AS links
+                WHERE links.proposal_id = proposals.id
+              ),
+              '[]'::jsonb
+            ) AS execution_receipts
+     FROM t2k_reference.reconciliation_proposals AS proposals
+     WHERE proposals.id = $1`,
+    [proposalId],
+    "Reconciliation proposal not found."
+  );
+  return validateReconciliationProposalRecord(
+    camelizeRow<ReferenceReconciliationProposalRecord>(row)
+  );
+}
+
+async function loadReconciliationDisposition(
+  client: PoolClient,
+  dispositionId: string
+) {
+  const row = await one(
+    client,
+    `SELECT *
+     FROM t2k_reference.reconciliation_dispositions
+     WHERE id = $1`,
+    [dispositionId],
+    "Reconciliation disposition not found."
+  );
+  return camelizeRow<ReferenceReconciliationDispositionRecord>(row);
+}
+
+async function loadReconciliationRevision(
+  client: PoolClient,
+  revisionId: string
+) {
+  const row = await one(
+    client,
+    `SELECT *
+     FROM t2k_reference.reconciliation_revisions
+     WHERE id = $1`,
+    [revisionId],
+    "Canonical reconciliation revision not found."
+  );
+  return camelizeRow<ReferenceReconciliationRevisionRecord>(row);
+}
+
+async function loadReconciliationActivation(
+  client: PoolClient,
+  activationId: string
+) {
+  const row = await one(
+    client,
+    `SELECT activations.id, activations.canonical_object_id,
+            activations.activated_revision_id,
+            activations.previous_revision_id, activations.activation_type,
+            activations.source_proposal_id,
+            activations.approval_disposition_id, activations.rationale,
+            activations.idempotency_key,
+            activations.activated_by_actor_type,
+            activations.activated_by_actor_id,
+            activations.activated_by_role, activations.created_at,
+            activations.sequence::integer AS sequence
+     FROM t2k_reference.reconciliation_activations AS activations
+     WHERE id = $1`,
+    [activationId],
+    "Reconciliation activation not found."
+  );
+  return camelizeRow<ReferenceReconciliationActivationRecord>(row);
+}
+
 export class PostgresReferenceLifecycle {
   private readonly pool: Pool;
   private readonly ownsPool: boolean;
@@ -717,8 +1081,53 @@ export class PostgresReferenceLifecycle {
   }
 
   async migrate() {
-    await this.pool.query(REFERENCE_LIFECYCLE_SCHEMA_SQL);
-    return REFERENCE_LIFECYCLE_SCHEMA_VERSION;
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        ["t2k_reference:migration"]
+      );
+      await client.query("CREATE SCHEMA IF NOT EXISTS t2k_reference");
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS t2k_reference.schema_migrations (
+           version INTEGER PRIMARY KEY,
+           applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+         )`
+      );
+      const current = await client.query<{ version: number | null }>(
+        `SELECT MAX(version)::integer AS version
+         FROM t2k_reference.schema_migrations`
+      );
+      const currentVersion = current.rows[0]?.version ?? null;
+      if (
+        currentVersion !== null &&
+        currentVersion > REFERENCE_LIFECYCLE_SCHEMA_VERSION
+      ) {
+        throw new ReferenceLifecycleConflictError(
+          `Reference schema version ${currentVersion} is newer than this runtime's supported version ${REFERENCE_LIFECYCLE_SCHEMA_VERSION}.`
+        );
+      }
+      await client.query(REFERENCE_LIFECYCLE_SCHEMA_SQL);
+      const applied = await client.query<{ present: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM t2k_reference.schema_migrations WHERE version = $1
+         ) AS present`,
+        [REFERENCE_LIFECYCLE_SCHEMA_VERSION]
+      );
+      if (!applied.rows[0]?.present) {
+        throw new ReferenceLifecycleConflictError(
+          `Reference schema version ${REFERENCE_LIFECYCLE_SCHEMA_VERSION} was not recorded.`
+        );
+      }
+      await client.query("COMMIT");
+      return REFERENCE_LIFECYCLE_SCHEMA_VERSION;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async close() {
@@ -738,6 +1147,31 @@ export class PostgresReferenceLifecycle {
     } finally {
       client.release();
     }
+  }
+
+  private async repeatableRead<T>(operation: (client: PoolClient) => Promise<T>) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const result = await operation(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async lockReconciliationIdempotency(
+    client: PoolClient,
+    idempotencyKey: string
+  ) {
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [`t2k_reference:reconciliation:idempotency:${idempotencyKey}`]
+    );
   }
 
   private async appendEvent(
@@ -2520,6 +2954,1324 @@ export class PostgresReferenceLifecycle {
         },
       });
       return camelizeRow<ReferencePolicyPromotionRecord>(result.rows[0]!);
+    });
+  }
+
+  async createReconciliationProposal(
+    input: ReferenceReconciliationProposalHashInput & {
+      idempotencyKey: string;
+      proposalHash: string;
+    },
+    actorInput: ReferenceLifecycleActor
+  ) {
+    const actor = requireActor(actorInput);
+    const proposalKey = requireText(input.proposalKey, "proposalKey");
+    const idempotencyKey = requireText(
+      input.idempotencyKey,
+      "idempotencyKey"
+    );
+    const objectType = requireText(input.objectType, "objectType");
+    const objectKey = requireText(input.objectKey, "objectKey");
+    const baseRevisionId =
+      input.baseRevisionId === undefined || input.baseRevisionId === null
+        ? null
+        : requireUuid(input.baseRevisionId, "baseRevisionId");
+    const proposedContent = immutableJsonObjectSnapshot(
+      input.proposedContent,
+      "proposedContent"
+    );
+    const evidence = immutableJsonObjectSnapshot(input.evidence, "evidence");
+    const executionReceiptIds = normalizeOptionalUniqueUuids(
+      input.executionReceiptIds,
+      "executionReceiptIds"
+    );
+    const requiredReviewerRole = requireText(
+      input.requiredReviewerRole,
+      "requiredReviewerRole"
+    );
+    const rationale = requireText(input.rationale, "rationale");
+    const suppliedProposalHash = requireSha256(
+      input.proposalHash,
+      "proposalHash"
+    );
+    const proposalHash = computeReferenceReconciliationProposalHash({
+      proposalKey,
+      objectType,
+      objectKey,
+      baseRevisionId,
+      proposedContent,
+      evidence,
+      executionReceiptIds,
+      requiredReviewerRole,
+      rationale,
+    });
+    if (proposalHash !== suppliedProposalHash) {
+      throw new ReferenceLifecycleValidationError(
+        "proposalHash does not match the canonical proposal body."
+      );
+    }
+    const contentHash = semanticHash(proposedContent);
+
+    return this.transaction(async (client) => {
+      await this.lockReconciliationIdempotency(
+        client,
+        idempotencyKey
+      );
+      const existingIdempotency = await client.query<{
+        id: string;
+        proposal_hash: string;
+        object_type: string;
+        object_key: string;
+        proposed_by_actor_type: ReferenceActorType;
+        proposed_by_actor_id: string;
+      }>(
+        `SELECT id, proposal_hash, object_type, object_key,
+                proposed_by_actor_type, proposed_by_actor_id
+         FROM t2k_reference.reconciliation_proposals
+         WHERE idempotency_key = $1`,
+        [idempotencyKey]
+      );
+      const existing = existingIdempotency.rows[0];
+      if (existing) {
+        if (
+          existing.proposal_hash !== proposalHash ||
+          existing.object_type !== objectType ||
+          existing.object_key !== objectKey ||
+          existing.proposed_by_actor_type !== actor.actorType ||
+          existing.proposed_by_actor_id !== actor.actorId
+        ) {
+          throw new ReferenceLifecycleConflictError(
+            "idempotencyKey is already bound to a different reconciliation proposal."
+          );
+        }
+        return loadReconciliationProposal(client, existing.id);
+      }
+
+      const objectId = randomUUID();
+      await client.query(
+        `INSERT INTO t2k_reference.reconciliation_objects (
+           id, object_type, object_key, created_by_actor_type,
+           created_by_actor_id
+         ) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (object_type, object_key) DO NOTHING`,
+        [objectId, objectType, objectKey, actor.actorType, actor.actorId]
+      );
+      const canonicalObject = await one<{
+        id: string;
+        active_revision_id: string | null;
+      }>(
+        client,
+        `SELECT id, active_revision_id
+         FROM t2k_reference.reconciliation_objects
+         WHERE object_type = $1 AND object_key = $2
+         FOR UPDATE`,
+        [objectType, objectKey],
+        "Canonical reconciliation object not found."
+      );
+      if (!sameNullableId(canonicalObject.active_revision_id, baseRevisionId)) {
+        throw new ReferenceLifecycleConflictError(
+          "The proposal is stale because baseRevisionId is not the active canonical revision."
+        );
+      }
+      if (baseRevisionId) {
+        const base = await one<{ canonical_object_id: string }>(
+          client,
+          `SELECT canonical_object_id
+           FROM t2k_reference.reconciliation_revisions
+           WHERE id = $1`,
+          [baseRevisionId],
+          "baseRevisionId does not identify a canonical reconciliation revision."
+        );
+        if (base.canonical_object_id !== canonicalObject.id) {
+          throw new ReferenceLifecycleConflictError(
+            "baseRevisionId belongs to a different canonical object."
+          );
+        }
+      }
+      const duplicateContent = await client.query<{ id: string }>(
+        `SELECT id
+         FROM t2k_reference.reconciliation_revisions
+         WHERE canonical_object_id = $1 AND content_hash = $2
+         LIMIT 1`,
+        [canonicalObject.id, contentHash]
+      );
+      if (duplicateContent.rows[0]) {
+        throw new ReferenceLifecycleConflictError(
+          "That exact canonical content already exists; activate the prior revision explicitly instead of silently merging it."
+        );
+      }
+      const receiptResult = await client.query<{
+        id: string;
+        receipt_snapshot: JsonObject;
+      }>(
+        `SELECT receipts.id, TO_JSONB(receipts) AS receipt_snapshot
+         FROM t2k_reference.execution_receipts AS receipts
+         WHERE receipts.id = ANY($1::uuid[])`,
+        [executionReceiptIds]
+      );
+      if (receiptResult.rows.length !== executionReceiptIds.length) {
+        throw new ReferenceLifecycleValidationError(
+          "Every executionReceiptId must identify a persisted execution receipt."
+        );
+      }
+      const receiptsById = new Map(
+        receiptResult.rows.map((receipt) => [receipt.id, receipt.receipt_snapshot])
+      );
+      const executionReceipts: ReferenceReconciliationExecutionReceiptEvidence[] =
+        executionReceiptIds.map((receiptId) => {
+          const receiptSnapshot = receiptsById.get(receiptId);
+          if (!receiptSnapshot) {
+            throw new ReferenceLifecycleValidationError(
+              "Every executionReceiptId must identify a persisted execution receipt."
+            );
+          }
+          return {
+            receiptId,
+            receiptSnapshot,
+            receiptDigest:
+              computeReferenceReconciliationExecutionReceiptDigest(
+                receiptSnapshot
+              ),
+          };
+        });
+      const executionEvidenceHash = semanticHash(executionReceipts);
+
+      const proposalId = randomUUID();
+      try {
+        await client.query(
+          `INSERT INTO t2k_reference.reconciliation_proposals (
+             id, proposal_key, idempotency_key, canonical_object_id,
+             object_type, object_key, base_revision_id, proposed_content,
+             content_hash, evidence, execution_evidence_hash,
+             required_reviewer_role, rationale, proposal_hash,
+             proposed_by_actor_type, proposed_by_actor_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                     $13, $14, $15, $16)`,
+          [
+            proposalId,
+            proposalKey,
+            idempotencyKey,
+            canonicalObject.id,
+            objectType,
+            objectKey,
+            baseRevisionId,
+            json(proposedContent),
+            contentHash,
+            json(evidence),
+            executionEvidenceHash,
+            requiredReviewerRole,
+            rationale,
+            proposalHash,
+            actor.actorType,
+            actor.actorId,
+          ]
+        );
+        for (const [position, receipt] of executionReceipts.entries()) {
+          await client.query(
+            `INSERT INTO t2k_reference.reconciliation_proposal_receipts (
+               proposal_id, receipt_id, position, receipt_snapshot,
+               receipt_digest
+             ) VALUES ($1, $2, $3, $4, $5)`,
+            [
+              proposalId,
+              receipt.receiptId,
+              position,
+              json(receipt.receiptSnapshot),
+              receipt.receiptDigest,
+            ]
+          );
+        }
+        await this.appendEvent(client, {
+          eventType: "reconciliation_proposal_recorded",
+          objectType: "reconciliation_proposal",
+          objectId: proposalId,
+          actor,
+          payload: {
+            canonicalObjectId: canonicalObject.id,
+            objectType,
+            objectKey,
+            baseRevisionId,
+            contentHash,
+            proposalHash,
+            executionReceiptIds,
+            executionEvidenceHash,
+          },
+        });
+        return loadReconciliationProposal(client, proposalId);
+      } catch (error) {
+        postgresError(
+          error,
+          "proposalKey, idempotencyKey, or proposalHash already exists."
+        );
+      }
+    });
+  }
+
+  async reviewReconciliationProposal(
+    proposalId: string,
+    input: {
+      objectType: string;
+      objectKey: string;
+      expectedProposalHash: string;
+      expectedDispositionVersion: number;
+      decision: "approved" | "rejected";
+      reviewerRole: string;
+      rationale: string;
+      idempotencyKey: string;
+    },
+    actorInput: ReferenceLifecycleActor
+  ) {
+    const actor = requireHuman(actorInput, "Reconciliation review");
+    const normalizedProposalId = requireUuid(proposalId, "proposalId");
+    const objectType = requireText(input.objectType, "objectType");
+    const objectKey = requireText(input.objectKey, "objectKey");
+    const expectedProposalHash = requireSha256(
+      input.expectedProposalHash,
+      "expectedProposalHash"
+    );
+    if (
+      !Number.isInteger(input.expectedDispositionVersion) ||
+      input.expectedDispositionVersion < 0
+    ) {
+      throw new ReferenceLifecycleValidationError(
+        "expectedDispositionVersion must be a non-negative integer."
+      );
+    }
+    if (!(["approved", "rejected"] as const).includes(input.decision)) {
+      throw new ReferenceLifecycleValidationError(
+        "decision must be approved or rejected."
+      );
+    }
+    const reviewerRole = requireText(input.reviewerRole, "reviewerRole");
+    const rationale = requireText(input.rationale, "rationale");
+    const idempotencyKey = requireText(
+      input.idempotencyKey,
+      "idempotencyKey"
+    );
+
+    return this.transaction(async (client) => {
+      await this.lockReconciliationIdempotency(
+        client,
+        idempotencyKey
+      );
+      const proposalBinding = await one<{
+        id: string;
+        object_type: string;
+        object_key: string;
+        proposal_hash: string;
+        required_reviewer_role: string;
+        proposed_by_actor_id: string;
+      }>(
+        client,
+        `SELECT proposals.id, proposals.object_type, proposals.object_key,
+                proposals.proposal_hash, proposals.required_reviewer_role,
+                proposals.proposed_by_actor_id
+         FROM t2k_reference.reconciliation_proposals AS proposals
+         INNER JOIN t2k_reference.reconciliation_objects AS objects
+           ON objects.id = proposals.canonical_object_id
+         WHERE proposals.id = $1
+         FOR UPDATE OF proposals, objects`,
+        [normalizedProposalId],
+        "Reconciliation proposal not found."
+      );
+      if (
+        proposalBinding.object_type !== objectType ||
+        proposalBinding.object_key !== objectKey
+      ) {
+        throw new ReferenceLifecycleConflictError(
+          "The proposal identity does not match the requested canonical object."
+        );
+      }
+      if (proposalBinding.proposal_hash !== expectedProposalHash) {
+        throw new ReferenceLifecycleConflictError(
+          "expectedProposalHash does not match the persisted proposal."
+        );
+      }
+      const proposal = await loadReconciliationProposal(
+        client,
+        proposalBinding.id
+      );
+      const persistedHash = computeReferenceReconciliationProposalHash({
+        proposalKey: proposal.proposalKey,
+        objectType: proposal.objectType,
+        objectKey: proposal.objectKey,
+        baseRevisionId: proposal.baseRevisionId,
+        proposedContent: proposal.proposedContent,
+        evidence: proposal.evidence,
+        executionReceiptIds: proposal.executionReceiptIds,
+        requiredReviewerRole: proposal.requiredReviewerRole,
+        rationale: proposal.rationale,
+      });
+      if (persistedHash !== proposal.proposalHash) {
+        throw new ReferenceLifecycleValidationError(
+          "The persisted reconciliation proposal failed its self-hash check."
+        );
+      }
+      if (reviewerRole !== proposalBinding.required_reviewer_role) {
+        throw new ReferenceLifecycleValidationError(
+          "reviewerRole does not satisfy the proposal's required reviewer role."
+        );
+      }
+      requireDifferentActor(
+        actor.actorId,
+        proposalBinding.proposed_by_actor_id,
+        "The reconciliation proposer cannot review the same proposal."
+      );
+
+      const priorResult = await client.query(
+        `SELECT *
+         FROM t2k_reference.reconciliation_dispositions
+         WHERE proposal_id = $1`,
+        [proposalBinding.id]
+      );
+      const priorRow = priorResult.rows[0];
+      if (priorRow) {
+        const prior = camelizeRow<ReferenceReconciliationDispositionRecord>(
+          priorRow
+        );
+        if (prior.idempotencyKey === idempotencyKey) {
+          if (
+            prior.decision !== input.decision ||
+            prior.expectedDispositionVersion !==
+              input.expectedDispositionVersion ||
+            prior.reviewerRole !== reviewerRole ||
+            prior.rationale !== rationale ||
+            prior.reviewedByActorId !== actor.actorId
+          ) {
+            throw new ReferenceLifecycleConflictError(
+              "idempotencyKey is already bound to a different disposition."
+            );
+          }
+          return prior;
+        }
+      }
+      const currentVersion = priorRow ? 1 : 0;
+      if (input.expectedDispositionVersion !== currentVersion) {
+        throw new ReferenceLifecycleConflictError(
+          "The reconciliation disposition is stale because its expected version is no longer current."
+        );
+      }
+      if (priorRow) {
+        throw new ReferenceLifecycleConflictError(
+          "The reconciliation proposal already has a final disposition."
+        );
+      }
+
+      const dispositionId = randomUUID();
+      try {
+        const result = await client.query(
+          `INSERT INTO t2k_reference.reconciliation_dispositions (
+             id, proposal_id, expected_disposition_version, decision,
+             reviewer_role, rationale, idempotency_key,
+             reviewed_by_actor_type, reviewed_by_actor_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'human', $8)
+           RETURNING *`,
+          [
+            dispositionId,
+            proposalBinding.id,
+            input.expectedDispositionVersion,
+            input.decision,
+            reviewerRole,
+            rationale,
+            idempotencyKey,
+            actor.actorId,
+          ]
+        );
+        await this.appendEvent(client, {
+          eventType: `reconciliation_proposal_${input.decision}`,
+          objectType: "reconciliation_disposition",
+          objectId: dispositionId,
+          actor,
+          payload: {
+            proposalId: proposalBinding.id,
+            canonicalObjectType: objectType,
+            canonicalObjectKey: objectKey,
+            reviewerRole,
+            proposalHash: proposal.proposalHash,
+          },
+        });
+        return camelizeRow<ReferenceReconciliationDispositionRecord>(
+          result.rows[0]!
+        );
+      } catch (error) {
+        postgresError(
+          error,
+          "The proposal was concurrently reviewed or the disposition idempotencyKey already exists."
+        );
+      }
+    });
+  }
+
+  async acceptReconciliationProposal(
+    proposalId: string,
+    input: {
+      objectType: string;
+      objectKey: string;
+      expectedProposalHash: string;
+      dispositionId: string;
+      expectedActiveRevisionId: string | null;
+      acceptedByRole: string;
+      rationale: string;
+      idempotencyKey: string;
+    },
+    actorInput: ReferenceLifecycleActor
+  ) {
+    const actor = requireHuman(actorInput, "Reconciliation acceptance");
+    const normalizedProposalId = requireUuid(proposalId, "proposalId");
+    const objectType = requireText(input.objectType, "objectType");
+    const objectKey = requireText(input.objectKey, "objectKey");
+    const expectedProposalHash = requireSha256(
+      input.expectedProposalHash,
+      "expectedProposalHash"
+    );
+    const dispositionId = requireUuid(input.dispositionId, "dispositionId");
+    const expectedActiveRevisionId =
+      input.expectedActiveRevisionId === null
+        ? null
+        : requireUuid(input.expectedActiveRevisionId, "expectedActiveRevisionId");
+    const acceptedByRole = requireText(input.acceptedByRole, "acceptedByRole");
+    const rationale = requireText(input.rationale, "rationale");
+    const idempotencyKey = requireText(
+      input.idempotencyKey,
+      "idempotencyKey"
+    );
+
+    return this.transaction(async (client) => {
+      await this.lockReconciliationIdempotency(
+        client,
+        idempotencyKey
+      );
+      const priorActivation = await client.query<{
+        id: string;
+        activated_revision_id: string;
+        source_proposal_id: string | null;
+        activation_type: string;
+        object_type: string;
+        object_key: string;
+        activated_by_actor_id: string;
+        activated_by_role: string;
+        approval_disposition_id: string | null;
+        previous_revision_id: string | null;
+        rationale: string;
+        proposal_hash: string | null;
+      }>(
+        `SELECT activations.id, activations.activated_revision_id,
+                activations.source_proposal_id, activations.activation_type,
+                objects.object_type, objects.object_key,
+                activations.activated_by_actor_id,
+                activations.activated_by_role,
+                activations.approval_disposition_id,
+                activations.previous_revision_id, activations.rationale,
+                proposals.proposal_hash
+         FROM t2k_reference.reconciliation_activations AS activations
+         INNER JOIN t2k_reference.reconciliation_objects AS objects
+           ON objects.id = activations.canonical_object_id
+         LEFT JOIN t2k_reference.reconciliation_proposals AS proposals
+           ON proposals.id = activations.source_proposal_id
+         WHERE activations.idempotency_key = $1`,
+        [idempotencyKey]
+      );
+      const prior = priorActivation.rows[0];
+      if (prior) {
+        if (
+          prior.activation_type !== "acceptance" ||
+          prior.source_proposal_id !== normalizedProposalId ||
+          prior.object_type !== objectType ||
+          prior.object_key !== objectKey ||
+          prior.activated_by_actor_id !== actor.actorId ||
+          prior.activated_by_role !== acceptedByRole ||
+          prior.approval_disposition_id !== dispositionId ||
+          !sameNullableId(
+            prior.previous_revision_id,
+            expectedActiveRevisionId
+          ) ||
+          prior.rationale !== rationale ||
+          prior.proposal_hash !== expectedProposalHash
+        ) {
+          throw new ReferenceLifecycleConflictError(
+            "idempotencyKey is already bound to a different canonical activation."
+          );
+        }
+        return {
+          revision: await loadReconciliationRevision(
+            client,
+            prior.activated_revision_id
+          ),
+          activation: await loadReconciliationActivation(client, prior.id),
+        };
+      }
+
+      const binding = await one<{
+        canonical_object_id: string;
+        object_type: string;
+        object_key: string;
+        proposal_hash: string;
+        base_revision_id: string | null;
+        proposed_by_actor_id: string;
+        active_revision_id: string | null;
+      }>(
+        client,
+        `SELECT proposals.canonical_object_id, proposals.object_type,
+                proposals.object_key, proposals.proposal_hash,
+                proposals.base_revision_id, proposals.proposed_by_actor_id,
+                objects.active_revision_id
+         FROM t2k_reference.reconciliation_proposals AS proposals
+         INNER JOIN t2k_reference.reconciliation_objects AS objects
+           ON objects.id = proposals.canonical_object_id
+         WHERE proposals.id = $1
+         FOR UPDATE OF proposals, objects`,
+        [normalizedProposalId],
+        "Reconciliation proposal not found."
+      );
+      if (binding.object_type !== objectType || binding.object_key !== objectKey) {
+        throw new ReferenceLifecycleConflictError(
+          "The proposal identity does not match the requested canonical object."
+        );
+      }
+      if (binding.proposal_hash !== expectedProposalHash) {
+        throw new ReferenceLifecycleConflictError(
+          "expectedProposalHash does not match the persisted proposal."
+        );
+      }
+      requireDifferentActor(
+        actor.actorId,
+        binding.proposed_by_actor_id,
+        "The reconciliation proposer cannot accept the same proposal."
+      );
+      const proposal = await loadReconciliationProposal(
+        client,
+        normalizedProposalId
+      );
+      const persistedHash = computeReferenceReconciliationProposalHash({
+        proposalKey: proposal.proposalKey,
+        objectType: proposal.objectType,
+        objectKey: proposal.objectKey,
+        baseRevisionId: proposal.baseRevisionId,
+        proposedContent: proposal.proposedContent,
+        evidence: proposal.evidence,
+        executionReceiptIds: proposal.executionReceiptIds,
+        requiredReviewerRole: proposal.requiredReviewerRole,
+        rationale: proposal.rationale,
+      });
+      if (
+        persistedHash !== proposal.proposalHash ||
+        semanticHash(proposal.proposedContent) !== proposal.contentHash
+      ) {
+        throw new ReferenceLifecycleValidationError(
+          "The persisted reconciliation proposal failed its self-hash check."
+        );
+      }
+
+      const dispositionResult = await client.query(
+        `SELECT *
+         FROM t2k_reference.reconciliation_dispositions
+         WHERE proposal_id = $1`,
+        [normalizedProposalId]
+      );
+      if (!dispositionResult.rows[0]) {
+        throw new ReferenceLifecycleConflictError(
+          "An explicit approved human disposition is required before acceptance."
+        );
+      }
+      const disposition = camelizeRow<ReferenceReconciliationDispositionRecord>(
+        dispositionResult.rows[0]
+      );
+      if (disposition.id !== dispositionId) {
+        throw new ReferenceLifecycleConflictError(
+          "dispositionId does not belong to this reconciliation proposal."
+        );
+      }
+      if (disposition.decision !== "approved") {
+        throw new ReferenceLifecycleConflictError(
+          "A rejected reconciliation proposal cannot be accepted."
+        );
+      }
+      requireDifferentActor(
+        actor.actorId,
+        disposition.reviewedByActorId,
+        "The reconciliation reviewer cannot accept the same proposal."
+      );
+      const existingRevision = await client.query<{ id: string }>(
+        `SELECT id
+         FROM t2k_reference.reconciliation_revisions
+         WHERE proposal_id = $1`,
+        [normalizedProposalId]
+      );
+      if (existingRevision.rows[0]) {
+        throw new ReferenceLifecycleConflictError(
+          "The reconciliation proposal already created an accepted revision."
+        );
+      }
+      if (
+        !sameNullableId(binding.active_revision_id, expectedActiveRevisionId) ||
+        !sameNullableId(binding.active_revision_id, binding.base_revision_id)
+      ) {
+        throw new ReferenceLifecycleConflictError(
+          "The acceptance is stale because the active canonical revision changed."
+        );
+      }
+
+      const nextRevision = await one<{ revision_number: number }>(
+        client,
+        `SELECT COALESCE(MAX(revision_number), 0)::integer + 1 AS revision_number
+         FROM t2k_reference.reconciliation_revisions
+         WHERE canonical_object_id = $1`,
+        [binding.canonical_object_id],
+        "Unable to allocate a canonical revision number."
+      );
+      const revisionId = randomUUID();
+      const revisionResult = await client.query(
+        `INSERT INTO t2k_reference.reconciliation_revisions (
+           id, canonical_object_id, revision_number, content, content_hash,
+           parent_revision_id, proposal_id, approval_disposition_id,
+           accepted_by_actor_type, accepted_by_actor_id, accepted_by_role
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'human', $9, $10)
+         RETURNING *`,
+        [
+          revisionId,
+          binding.canonical_object_id,
+          nextRevision.revision_number,
+          json(proposal.proposedContent),
+          proposal.contentHash,
+          binding.active_revision_id,
+          normalizedProposalId,
+          disposition.id,
+          actor.actorId,
+          acceptedByRole,
+        ]
+      );
+      const objectUpdate = await client.query(
+        `UPDATE t2k_reference.reconciliation_objects
+         SET active_revision_id = $2, updated_at = NOW()
+         WHERE id = $1
+           AND active_revision_id IS NOT DISTINCT FROM $3::uuid
+         RETURNING id`,
+        [binding.canonical_object_id, revisionId, expectedActiveRevisionId]
+      );
+      if (!objectUpdate.rows[0]) {
+        throw new ReferenceLifecycleConflictError(
+          "The acceptance lost a concurrent active-revision update."
+        );
+      }
+      const activationId = randomUUID();
+      await client.query(
+        `INSERT INTO t2k_reference.reconciliation_activations (
+           id, canonical_object_id, activated_revision_id,
+           previous_revision_id, activation_type, source_proposal_id,
+           approval_disposition_id, rationale, idempotency_key,
+           activated_by_actor_type, activated_by_actor_id, activated_by_role
+         ) VALUES ($1, $2, $3, $4, 'acceptance', $5, $6, $7, $8,
+                   'human', $9, $10)
+         RETURNING id`,
+        [
+          activationId,
+          binding.canonical_object_id,
+          revisionId,
+          binding.active_revision_id,
+          normalizedProposalId,
+          disposition.id,
+          rationale,
+          idempotencyKey,
+          actor.actorId,
+          acceptedByRole,
+        ]
+      );
+      await this.appendEvent(client, {
+        eventType: "reconciliation_revision_accepted",
+        objectType: "reconciliation_revision",
+        objectId: revisionId,
+        actor,
+        payload: {
+          activationId,
+          idempotencyKey,
+          canonicalObjectId: binding.canonical_object_id,
+          proposalId: normalizedProposalId,
+          dispositionId: disposition.id,
+          revisionNumber: nextRevision.revision_number,
+          previousRevisionId: binding.active_revision_id,
+          contentHash: proposal.contentHash,
+          acceptedByRole,
+        },
+      });
+      return {
+        revision: camelizeRow<ReferenceReconciliationRevisionRecord>(
+          revisionResult.rows[0]!
+        ),
+        activation: await loadReconciliationActivation(client, activationId),
+      };
+    });
+  }
+
+  async rollbackReconciliationRevision(
+    input: {
+      objectType: string;
+      objectKey: string;
+      targetRevisionId: string;
+      expectedActiveRevisionId: string;
+      activatedByRole: string;
+      rationale: string;
+      idempotencyKey: string;
+    },
+    actorInput: ReferenceLifecycleActor
+  ) {
+    const actor = requireHuman(actorInput, "Reconciliation rollback");
+    const objectType = requireText(input.objectType, "objectType");
+    const objectKey = requireText(input.objectKey, "objectKey");
+    const targetRevisionId = requireUuid(
+      input.targetRevisionId,
+      "targetRevisionId"
+    );
+    const expectedActiveRevisionId = requireUuid(
+      input.expectedActiveRevisionId,
+      "expectedActiveRevisionId"
+    );
+    const activatedByRole = requireText(
+      input.activatedByRole,
+      "activatedByRole"
+    );
+    const rationale = requireText(input.rationale, "rationale");
+    const idempotencyKey = requireText(
+      input.idempotencyKey,
+      "idempotencyKey"
+    );
+
+    return this.transaction(async (client) => {
+      await this.lockReconciliationIdempotency(
+        client,
+        idempotencyKey
+      );
+      const priorActivation = await client.query<{
+        id: string;
+        activated_revision_id: string;
+        activation_type: string;
+        object_type: string;
+        object_key: string;
+        activated_by_actor_id: string;
+        activated_by_role: string;
+        previous_revision_id: string | null;
+        rationale: string;
+      }>(
+        `SELECT activations.id, activations.activated_revision_id,
+                activations.activation_type, objects.object_type,
+                objects.object_key, activations.activated_by_actor_id,
+                activations.activated_by_role,
+                activations.previous_revision_id, activations.rationale
+         FROM t2k_reference.reconciliation_activations AS activations
+         INNER JOIN t2k_reference.reconciliation_objects AS objects
+           ON objects.id = activations.canonical_object_id
+         WHERE activations.idempotency_key = $1`,
+        [idempotencyKey]
+      );
+      const prior = priorActivation.rows[0];
+      if (prior) {
+        if (
+          prior.activation_type !== "rollback" ||
+          prior.activated_revision_id !== targetRevisionId ||
+          prior.object_type !== objectType ||
+          prior.object_key !== objectKey ||
+          prior.activated_by_actor_id !== actor.actorId ||
+          prior.activated_by_role !== activatedByRole ||
+          prior.previous_revision_id !== expectedActiveRevisionId ||
+          prior.rationale !== rationale
+        ) {
+          throw new ReferenceLifecycleConflictError(
+            "idempotencyKey is already bound to a different rollback activation."
+          );
+        }
+        return {
+          revision: await loadReconciliationRevision(
+            client,
+            prior.activated_revision_id
+          ),
+          activation: await loadReconciliationActivation(client, prior.id),
+        };
+      }
+
+      const canonicalObject = await one<{
+        id: string;
+        active_revision_id: string | null;
+        latest_activated_by_actor_id: string | null;
+      }>(
+        client,
+        `SELECT objects.id, objects.active_revision_id,
+                (
+                  SELECT activations.activated_by_actor_id
+                  FROM t2k_reference.reconciliation_activations AS activations
+                  WHERE activations.canonical_object_id = objects.id
+                  ORDER BY activations.sequence DESC
+                  LIMIT 1
+                ) AS latest_activated_by_actor_id
+         FROM t2k_reference.reconciliation_objects AS objects
+         WHERE objects.object_type = $1 AND objects.object_key = $2
+         FOR UPDATE OF objects`,
+        [objectType, objectKey],
+        "Canonical reconciliation object not found."
+      );
+      if (canonicalObject.active_revision_id !== expectedActiveRevisionId) {
+        throw new ReferenceLifecycleConflictError(
+          "The rollback is stale because the active canonical revision changed."
+        );
+      }
+      if (targetRevisionId === expectedActiveRevisionId) {
+        throw new ReferenceLifecycleValidationError(
+          "Rollback target must differ from the active revision."
+        );
+      }
+      const revisions = await client.query<{
+        id: string;
+        canonical_object_id: string;
+        accepted_by_actor_id: string;
+        proposed_by_actor_id: string;
+        reviewed_by_actor_id: string;
+      }>(
+        `SELECT revisions.id, revisions.canonical_object_id,
+                revisions.accepted_by_actor_id,
+                proposals.proposed_by_actor_id,
+                dispositions.reviewed_by_actor_id
+         FROM t2k_reference.reconciliation_revisions AS revisions
+         INNER JOIN t2k_reference.reconciliation_proposals AS proposals
+           ON proposals.id = revisions.proposal_id
+         INNER JOIN t2k_reference.reconciliation_dispositions AS dispositions
+           ON dispositions.id = revisions.approval_disposition_id
+         WHERE revisions.id = ANY($1::uuid[])`,
+        [[targetRevisionId, expectedActiveRevisionId]]
+      );
+      const target = revisions.rows.find((row) => row.id === targetRevisionId);
+      const current = revisions.rows.find(
+        (row) => row.id === expectedActiveRevisionId
+      );
+      if (!target || !current) {
+        throw new ReferenceLifecycleNotFoundError(
+          "Rollback target or active reconciliation revision was not found."
+        );
+      }
+      if (
+        target.canonical_object_id !== canonicalObject.id ||
+        current.canonical_object_id !== canonicalObject.id
+      ) {
+        throw new ReferenceLifecycleConflictError(
+          "Rollback revisions must belong to the requested canonical object."
+        );
+      }
+      const ancestor = await client.query<{ id: string }>(
+        `WITH RECURSIVE lineage AS (
+           SELECT id, parent_revision_id
+           FROM t2k_reference.reconciliation_revisions
+           WHERE id = $1 AND canonical_object_id = $2
+           UNION ALL
+           SELECT revisions.id, revisions.parent_revision_id
+           FROM t2k_reference.reconciliation_revisions AS revisions
+           INNER JOIN lineage
+             ON revisions.id = lineage.parent_revision_id
+           WHERE revisions.canonical_object_id = $2
+         )
+         SELECT id FROM lineage WHERE id = $3 AND id <> $1`,
+        [expectedActiveRevisionId, canonicalObject.id, targetRevisionId]
+      );
+      if (!ancestor.rows[0]) {
+        throw new ReferenceLifecycleValidationError(
+          "Rollback target must be a prior ancestor of the active revision."
+        );
+      }
+      requireDifferentActor(
+        actor.actorId,
+        current.accepted_by_actor_id,
+        "The actor who accepted the active revision cannot review its rollback."
+      );
+      requireDifferentActor(
+        actor.actorId,
+        current.proposed_by_actor_id,
+        "The active revision's proposer cannot review its rollback."
+      );
+      requireDifferentActor(
+        actor.actorId,
+        current.reviewed_by_actor_id,
+        "The active revision's approving reviewer cannot review its rollback."
+      );
+      if (canonicalObject.latest_activated_by_actor_id) {
+        requireDifferentActor(
+          actor.actorId,
+          canonicalObject.latest_activated_by_actor_id,
+          "The latest activation actor cannot review the rollback."
+        );
+      }
+      const objectUpdate = await client.query(
+        `UPDATE t2k_reference.reconciliation_objects
+         SET active_revision_id = $2, updated_at = NOW()
+         WHERE id = $1 AND active_revision_id = $3
+         RETURNING id`,
+        [canonicalObject.id, targetRevisionId, expectedActiveRevisionId]
+      );
+      if (!objectUpdate.rows[0]) {
+        throw new ReferenceLifecycleConflictError(
+          "The rollback lost a concurrent active-revision update."
+        );
+      }
+      const activationId = randomUUID();
+      await client.query(
+        `INSERT INTO t2k_reference.reconciliation_activations (
+           id, canonical_object_id, activated_revision_id,
+           previous_revision_id, activation_type, source_proposal_id,
+           approval_disposition_id, rationale, idempotency_key,
+           activated_by_actor_type, activated_by_actor_id, activated_by_role
+         ) VALUES ($1, $2, $3, $4, 'rollback', NULL, NULL, $5, $6,
+                   'human', $7, $8)
+         RETURNING id`,
+        [
+          activationId,
+          canonicalObject.id,
+          targetRevisionId,
+          expectedActiveRevisionId,
+          rationale,
+          idempotencyKey,
+          actor.actorId,
+          activatedByRole,
+        ]
+      );
+      await this.appendEvent(client, {
+        eventType: "reconciliation_revision_rolled_back",
+        objectType: "reconciliation_revision",
+        objectId: targetRevisionId,
+        actor,
+        payload: {
+          activationId,
+          idempotencyKey,
+          canonicalObjectId: canonicalObject.id,
+          restoredRevisionId: targetRevisionId,
+          previousRevisionId: expectedActiveRevisionId,
+          activatedByRole,
+          rationale,
+        },
+      });
+      return {
+        revision: await loadReconciliationRevision(client, targetRevisionId),
+        activation: await loadReconciliationActivation(client, activationId),
+      };
+    });
+  }
+
+  /**
+   * Governed roll-forward to an exact existing revision. This appends an
+   * activation only; it never copies, merges, or rewrites canonical content.
+   */
+  async reactivateReconciliationRevision(
+    input: {
+      objectType: string;
+      objectKey: string;
+      targetRevisionId: string;
+      expectedActiveRevisionId: string;
+      activatedByRole: string;
+      rationale: string;
+      idempotencyKey: string;
+    },
+    actorInput: ReferenceLifecycleActor
+  ) {
+    const actor = requireHuman(actorInput, "Reconciliation reactivation");
+    const objectType = requireText(input.objectType, "objectType");
+    const objectKey = requireText(input.objectKey, "objectKey");
+    const targetRevisionId = requireUuid(
+      input.targetRevisionId,
+      "targetRevisionId"
+    );
+    const expectedActiveRevisionId = requireUuid(
+      input.expectedActiveRevisionId,
+      "expectedActiveRevisionId"
+    );
+    const activatedByRole = requireText(
+      input.activatedByRole,
+      "activatedByRole"
+    );
+    const rationale = requireText(input.rationale, "rationale");
+    const idempotencyKey = requireText(
+      input.idempotencyKey,
+      "idempotencyKey"
+    );
+
+    return this.transaction(async (client) => {
+      await this.lockReconciliationIdempotency(
+        client,
+        idempotencyKey
+      );
+      const priorActivation = await client.query<{
+        id: string;
+        activated_revision_id: string;
+        activation_type: string;
+        object_type: string;
+        object_key: string;
+        activated_by_actor_id: string;
+        activated_by_role: string;
+        previous_revision_id: string | null;
+        rationale: string;
+      }>(
+        `SELECT activations.id, activations.activated_revision_id,
+                activations.activation_type, objects.object_type,
+                objects.object_key, activations.activated_by_actor_id,
+                activations.activated_by_role,
+                activations.previous_revision_id, activations.rationale
+         FROM t2k_reference.reconciliation_activations AS activations
+         INNER JOIN t2k_reference.reconciliation_objects AS objects
+           ON objects.id = activations.canonical_object_id
+         WHERE activations.idempotency_key = $1`,
+        [idempotencyKey]
+      );
+      const prior = priorActivation.rows[0];
+      if (prior) {
+        if (
+          prior.activation_type !== "reactivation" ||
+          prior.activated_revision_id !== targetRevisionId ||
+          prior.object_type !== objectType ||
+          prior.object_key !== objectKey ||
+          prior.activated_by_actor_id !== actor.actorId ||
+          prior.activated_by_role !== activatedByRole ||
+          prior.previous_revision_id !== expectedActiveRevisionId ||
+          prior.rationale !== rationale
+        ) {
+          throw new ReferenceLifecycleConflictError(
+            "idempotencyKey is already bound to a different reactivation."
+          );
+        }
+        return {
+          revision: await loadReconciliationRevision(
+            client,
+            prior.activated_revision_id
+          ),
+          activation: await loadReconciliationActivation(client, prior.id),
+        };
+      }
+
+      const canonicalObject = await one<{
+        id: string;
+        active_revision_id: string | null;
+        latest_activated_by_actor_id: string | null;
+      }>(
+        client,
+        `SELECT objects.id, objects.active_revision_id,
+                (
+                  SELECT activations.activated_by_actor_id
+                  FROM t2k_reference.reconciliation_activations AS activations
+                  WHERE activations.canonical_object_id = objects.id
+                  ORDER BY activations.sequence DESC
+                  LIMIT 1
+                ) AS latest_activated_by_actor_id
+         FROM t2k_reference.reconciliation_objects AS objects
+         WHERE objects.object_type = $1 AND objects.object_key = $2
+         FOR UPDATE OF objects`,
+        [objectType, objectKey],
+        "Canonical reconciliation object not found."
+      );
+      if (canonicalObject.active_revision_id !== expectedActiveRevisionId) {
+        throw new ReferenceLifecycleConflictError(
+          "The reactivation is stale because the active revision changed."
+        );
+      }
+      if (targetRevisionId === expectedActiveRevisionId) {
+        throw new ReferenceLifecycleValidationError(
+          "Reactivation target must differ from the active revision."
+        );
+      }
+      const revisions = await client.query<{
+        id: string;
+        canonical_object_id: string;
+        accepted_by_actor_id: string;
+        proposed_by_actor_id: string;
+        reviewed_by_actor_id: string;
+      }>(
+        `SELECT revisions.id, revisions.canonical_object_id,
+                revisions.accepted_by_actor_id,
+                proposals.proposed_by_actor_id,
+                dispositions.reviewed_by_actor_id
+         FROM t2k_reference.reconciliation_revisions AS revisions
+         INNER JOIN t2k_reference.reconciliation_proposals AS proposals
+           ON proposals.id = revisions.proposal_id
+         INNER JOIN t2k_reference.reconciliation_dispositions AS dispositions
+           ON dispositions.id = revisions.approval_disposition_id
+         WHERE revisions.id = ANY($1::uuid[])`,
+        [[targetRevisionId, expectedActiveRevisionId]]
+      );
+      const target = revisions.rows.find((row) => row.id === targetRevisionId);
+      const current = revisions.rows.find(
+        (row) => row.id === expectedActiveRevisionId
+      );
+      if (!target || !current) {
+        throw new ReferenceLifecycleNotFoundError(
+          "Reactivation target or active revision was not found."
+        );
+      }
+      if (
+        target.canonical_object_id !== canonicalObject.id ||
+        current.canonical_object_id !== canonicalObject.id
+      ) {
+        throw new ReferenceLifecycleConflictError(
+          "Reactivation revisions must belong to the requested object."
+        );
+      }
+      for (const [priorActorId, message] of [
+        [target.proposed_by_actor_id, "The target revision's proposer cannot reactivate it."],
+        [target.reviewed_by_actor_id, "The target revision's reviewer cannot reactivate it."],
+        [target.accepted_by_actor_id, "The target revision's accepter cannot reactivate it."],
+        [current.proposed_by_actor_id, "The active revision's proposer cannot reactivate another revision."],
+        [current.reviewed_by_actor_id, "The active revision's reviewer cannot reactivate another revision."],
+        [current.accepted_by_actor_id, "The active revision's accepter cannot reactivate another revision."],
+      ] as const) {
+        requireDifferentActor(actor.actorId, priorActorId, message);
+      }
+      if (canonicalObject.latest_activated_by_actor_id) {
+        requireDifferentActor(
+          actor.actorId,
+          canonicalObject.latest_activated_by_actor_id,
+          "The latest activation actor cannot perform the reactivation."
+        );
+      }
+
+      const objectUpdate = await client.query(
+        `UPDATE t2k_reference.reconciliation_objects
+         SET active_revision_id = $2, updated_at = NOW()
+         WHERE id = $1 AND active_revision_id = $3
+         RETURNING id`,
+        [canonicalObject.id, targetRevisionId, expectedActiveRevisionId]
+      );
+      if (!objectUpdate.rows[0]) {
+        throw new ReferenceLifecycleConflictError(
+          "The reactivation lost a concurrent active-revision update."
+        );
+      }
+      const activationId = randomUUID();
+      await client.query(
+        `INSERT INTO t2k_reference.reconciliation_activations (
+           id, canonical_object_id, activated_revision_id,
+           previous_revision_id, activation_type, source_proposal_id,
+           approval_disposition_id, rationale, idempotency_key,
+           activated_by_actor_type, activated_by_actor_id, activated_by_role
+         ) VALUES ($1, $2, $3, $4, 'reactivation', NULL, NULL, $5, $6,
+                   'human', $7, $8)`,
+        [
+          activationId,
+          canonicalObject.id,
+          targetRevisionId,
+          expectedActiveRevisionId,
+          rationale,
+          idempotencyKey,
+          actor.actorId,
+          activatedByRole,
+        ]
+      );
+      await this.appendEvent(client, {
+        eventType: "reconciliation_revision_reactivated",
+        objectType: "reconciliation_revision",
+        objectId: targetRevisionId,
+        actor,
+        payload: {
+          activationId,
+          idempotencyKey,
+          canonicalObjectId: canonicalObject.id,
+          reactivatedRevisionId: targetRevisionId,
+          previousRevisionId: expectedActiveRevisionId,
+          activatedByRole,
+          rationale,
+        },
+      });
+      return {
+        revision: await loadReconciliationRevision(client, targetRevisionId),
+        activation: await loadReconciliationActivation(client, activationId),
+      };
+    });
+  }
+
+  async getReconciliationLineage(
+    objectTypeInput: string,
+    objectKeyInput: string
+  ): Promise<ReferenceReconciliationLineageRecord | null> {
+    const objectType = requireText(objectTypeInput, "objectType");
+    const objectKey = requireText(objectKeyInput, "objectKey");
+    return this.repeatableRead(async (client) => {
+      const objectResult = await client.query(
+        `SELECT *
+         FROM t2k_reference.reconciliation_objects
+         WHERE object_type = $1 AND object_key = $2`,
+        [objectType, objectKey]
+      );
+      if (!objectResult.rows[0]) return null;
+      const object = camelizeRow<ReferenceReconciliationObjectRecord>(
+        objectResult.rows[0]
+      );
+      const proposalResult = await client.query(
+        `SELECT proposals.*,
+                COALESCE(
+                  (
+                    SELECT ARRAY_AGG(links.receipt_id ORDER BY links.position)
+                    FROM t2k_reference.reconciliation_proposal_receipts AS links
+                    WHERE links.proposal_id = proposals.id
+                  ),
+                  ARRAY[]::uuid[]
+                ) AS execution_receipt_ids,
+                COALESCE(
+                  (
+                    SELECT JSONB_AGG(
+                      JSONB_BUILD_OBJECT(
+                        'receiptId', links.receipt_id,
+                        'receiptDigest', links.receipt_digest,
+                        'receiptSnapshot', links.receipt_snapshot
+                      ) ORDER BY links.position
+                    )
+                    FROM t2k_reference.reconciliation_proposal_receipts AS links
+                    WHERE links.proposal_id = proposals.id
+                  ),
+                  '[]'::jsonb
+                ) AS execution_receipts
+         FROM t2k_reference.reconciliation_proposals AS proposals
+         WHERE proposals.canonical_object_id = $1
+         ORDER BY proposals.created_at, proposals.id`,
+        [object.id]
+      );
+      const dispositionResult = await client.query(
+        `SELECT dispositions.*
+         FROM t2k_reference.reconciliation_dispositions AS dispositions
+         INNER JOIN t2k_reference.reconciliation_proposals AS proposals
+           ON proposals.id = dispositions.proposal_id
+         WHERE proposals.canonical_object_id = $1
+         ORDER BY dispositions.reviewed_at, dispositions.id`,
+        [object.id]
+      );
+      const revisionResult = await client.query(
+        `SELECT *
+         FROM t2k_reference.reconciliation_revisions
+         WHERE canonical_object_id = $1
+         ORDER BY revision_number`,
+        [object.id]
+      );
+      const activationResult = await client.query(
+        `SELECT sequence::integer AS sequence, id, canonical_object_id,
+                activated_revision_id, previous_revision_id, activation_type,
+                source_proposal_id, approval_disposition_id, rationale,
+                idempotency_key, activated_by_actor_type,
+                activated_by_actor_id, activated_by_role, created_at
+         FROM t2k_reference.reconciliation_activations
+         WHERE canonical_object_id = $1
+         ORDER BY sequence`,
+        [object.id]
+      );
+      const revisions = revisionResult.rows.map((row) =>
+        camelizeRow<ReferenceReconciliationRevisionRecord>(row)
+      );
+      return {
+        object,
+        activeRevision:
+          revisions.find(
+            (revision) => revision.id === object.activeRevisionId
+          ) ?? null,
+        proposals: proposalResult.rows.map((row) =>
+          validateReconciliationProposalRecord(
+            camelizeRow<ReferenceReconciliationProposalRecord>(row)
+          )
+        ),
+        dispositions: dispositionResult.rows.map((row) =>
+          camelizeRow<ReferenceReconciliationDispositionRecord>(row)
+        ),
+        revisions,
+        activations: activationResult.rows.map((row) =>
+          camelizeRow<ReferenceReconciliationActivationRecord>(row)
+        ),
+      };
     });
   }
 

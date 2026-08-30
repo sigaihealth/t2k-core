@@ -1,16 +1,34 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  McpError,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { createRequire } from "node:module";
 import {
   ReferencePolicyError,
   ReferenceRewardError,
+  SOURCE_AUTHENTICATION_STATES,
+  evaluatePurposeLimitedAccess,
   evaluateReferencePolicy,
   evaluateReferenceReplay,
   evaluateReferenceReward,
+  executeSourceMapping,
+  reconcileCanonicalRecords,
+  resolveEntityCandidates,
   validateOntologyPackManifest,
+  type AcceptedIdempotencyRecord,
+  type CanonicalAuthorityPolicy,
   type DecisionLearningContract,
+  type EntityResolutionInput,
+  type ExecuteSourceMappingResult,
+  type FederatedSourceEnvelope,
   type JsonObject,
   type JsonValue,
+  type OntologyPackSourceMapping,
+  type PurposeLimitedAccessPolicy,
+  type PurposeLimitedAccessRequest,
   type ReferenceReplayEpisode,
   type ReferenceRewardObservation,
   type RewardDimensionSpec,
@@ -51,6 +69,10 @@ const SEMANTIC_TOOL_NAMES = [
   "evaluate_reference_policy",
   "evaluate_reference_replay",
   "evaluate_reference_reward",
+  "map_governed_source_record",
+  "propose_canonical_reconciliation",
+  "propose_entity_link",
+  "evaluate_purpose_limited_access",
 ] as const;
 
 const LIFECYCLE_READ_TOOL_NAMES = [
@@ -80,6 +102,526 @@ const learningModeSchema = z.enum([
   "sequential_rl",
   "optimization",
 ]);
+
+const nonBlankStringSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value.trim().length > 0, "String must not be blank.");
+const unsafeObjectKeys = new Set(["__proto__", "constructor", "prototype"]);
+
+interface UnsafeInputSurface {
+  message: string;
+  path: Array<string | number>;
+}
+
+function findUnsafeInputSurface(
+  value: unknown,
+  path: Array<string | number> = [],
+  ancestors = new WeakSet<object>(),
+): UnsafeInputSurface | null {
+  if (value === null || typeof value !== "object") return null;
+  if (ancestors.has(value)) {
+    return {
+      path,
+      message: "Cyclic input objects are not valid MCP JSON arguments.",
+    };
+  }
+
+  ancestors.add(value);
+  try {
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key === "symbol") {
+        return {
+          path,
+          message:
+            "Symbol-keyed input properties are not valid MCP JSON arguments.",
+        };
+      }
+      const segment =
+        Array.isArray(value) && /^\d+$/.test(key) ? Number(key) : key;
+      const propertyPath = [...path, segment];
+      if (unsafeObjectKeys.has(key)) {
+        return {
+          path: propertyPath,
+          message: `Unsafe own key "${key}" is not allowed in MCP arguments.`,
+        };
+      }
+
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor) {
+        return {
+          path: propertyPath,
+          message:
+            "Unreadable input properties are not valid MCP JSON arguments.",
+        };
+      }
+      if (!("value" in descriptor)) {
+        return {
+          path: propertyPath,
+          message:
+            "Accessor input properties are not valid MCP JSON arguments.",
+        };
+      }
+
+      const nestedIssue = findUnsafeInputSurface(
+        descriptor.value,
+        propertyPath,
+        ancestors,
+      );
+      if (nestedIssue) return nestedIssue;
+    }
+  } finally {
+    ancestors.delete(value);
+  }
+  return null;
+}
+
+function guardedObjectInputSchema<T extends z.ZodRawShape>(
+  shape: T,
+  options: { strict?: boolean } = {},
+) {
+  const runtimeSchema = options.strict
+    ? z.object(shape).strict()
+    : z.object(shape);
+  // MCP advertises a closed-world contract even for legacy tools whose
+  // runtime compatibility behavior still strips unknown caller fields.
+  const advertisedSchema = z.object(shape).strict();
+  const { $schema: _schema, ...advertisedJsonSchema } = z.toJSONSchema(
+    advertisedSchema,
+    { target: "draft-7", io: "input" },
+  );
+
+  const guardedSchema = z
+    .preprocess((value, context) => {
+      const unsafeSurface = findUnsafeInputSurface(value);
+      if (unsafeSurface) {
+        context.addIssue({
+          code: "custom",
+          path: unsafeSurface.path,
+          message: unsafeSurface.message,
+        });
+      }
+      return value;
+    }, runtimeSchema)
+    .meta(advertisedJsonSchema);
+
+  // The MCP SDK only advertises schemas it recognizes as object-shaped. A
+  // Zod preprocess is a pipe even when its output is an object, so provide the
+  // already-advertised shape marker without changing Zod's raw-input parser.
+  Object.defineProperty(guardedSchema._zod.def, "shape", {
+    configurable: false,
+    enumerable: false,
+    value: shape,
+    writable: false,
+  });
+  return guardedSchema;
+}
+
+function installRawToolCallOwnKeyGuard(server: McpServer) {
+  const guardedCallToolRequestSchema = z.preprocess((value) => {
+    const unsafeSurface = findUnsafeInputSurface(value);
+    if (unsafeSurface) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `${unsafeSurface.message} Path: ${JSON.stringify(unsafeSurface.path)}.`,
+      );
+    }
+    return value;
+  }, CallToolRequestSchema);
+  Object.defineProperty(guardedCallToolRequestSchema._zod.def, "shape", {
+    configurable: false,
+    enumerable: false,
+    value: CallToolRequestSchema._zod.def.shape,
+    writable: false,
+  });
+
+  const protocol = server.server;
+  const originalSetRequestHandler = protocol.setRequestHandler;
+  const invokeSetRequestHandler = originalSetRequestHandler as unknown as (
+    requestSchema: unknown,
+    handler: unknown,
+  ) => void;
+  protocol.setRequestHandler = ((requestSchema: unknown, handler: unknown) => {
+    invokeSetRequestHandler.call(
+      protocol,
+      requestSchema === CallToolRequestSchema
+        ? (guardedCallToolRequestSchema as unknown as typeof CallToolRequestSchema)
+        : requestSchema,
+      handler,
+    );
+  }) as typeof protocol.setRequestHandler;
+
+  return () => {
+    protocol.setRequestHandler = originalSetRequestHandler;
+  };
+}
+
+const safeObjectKeySchema = z
+  .string()
+  .refine(
+    (value) => !unsafeObjectKeys.has(value),
+    "Unsafe object key is not allowed.",
+  );
+const safeNonBlankObjectKeySchema = nonBlankStringSchema.refine(
+  (value) => !unsafeObjectKeys.has(value),
+  "Unsafe object key is not allowed.",
+);
+const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+const strictJsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.array(strictJsonValueSchema),
+    z.record(safeObjectKeySchema, strictJsonValueSchema),
+  ]),
+);
+const strictJsonObjectSchema = z.record(
+  safeObjectKeySchema,
+  strictJsonValueSchema,
+);
+const uniqueNonBlankStringsSchema = z
+  .array(nonBlankStringSchema)
+  .refine(
+    (values) => new Set(values).size === values.length,
+    "Values must be unique.",
+  );
+const nonEmptyUniqueStringsSchema = uniqueNonBlankStringsSchema.min(1);
+const sourceAuthenticationStateSchema = z.enum(SOURCE_AUTHENTICATION_STATES);
+const sourceNormalizationSchema = z.enum([
+  "trim",
+  "collapse_whitespace",
+  "lowercase",
+  "uppercase",
+  "digits_only",
+  "iso_date",
+]);
+const sourceConflictPolicySchema = z.enum([
+  "preserve_all",
+  "prefer_authority",
+  "require_review",
+]);
+const sourceFieldMappingSchema = z
+  .object({
+    sourcePath: nonBlankStringSchema,
+    targetProperty: safeNonBlankObjectKeySchema,
+    required: z.boolean(),
+    normalizations: z.array(sourceNormalizationSchema),
+    valueMap: z.record(
+      safeObjectKeySchema,
+      z.union([z.null(), z.string(), z.number().finite(), z.boolean()]),
+    ),
+    authorityDomain: safeNonBlankObjectKeySchema,
+    conflictPolicy: sourceConflictPolicySchema,
+  })
+  .strict();
+const sourceMappingSchema = z
+  .object({
+    id: nonBlankStringSchema,
+    mappingVersion: nonBlankStringSchema.optional(),
+    sourceType: nonBlankStringSchema,
+    sourceLocator: nonBlankStringSchema,
+    sourceSchemaVersion: nonBlankStringSchema.optional(),
+    fields: z.string().optional(),
+    object: nonBlankStringSchema,
+    properties: z.string().optional(),
+    transform: z.string().optional(),
+    fieldMappings: z.array(sourceFieldMappingSchema).min(1).optional(),
+    targetIdentity: z
+      .array(safeNonBlankObjectKeySchema)
+      .min(1)
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "Values must be unique.",
+      )
+      .optional(),
+    idempotencyPath: nonBlankStringSchema.optional(),
+    eventTimePath: nonBlankStringSchema.optional(),
+    observedTimePath: nonBlankStringSchema.optional(),
+    authority: nonBlankStringSchema,
+    riskTier: z.string().optional(),
+    reviewStatus: nonBlankStringSchema,
+    driftPolicy: z
+      .enum(["reject", "quarantine", "allow_with_review"])
+      .optional(),
+    lateArrivalPolicy: z
+      .enum(["reject", "quarantine", "accept_with_review"])
+      .optional(),
+    humanCheckpoint: z.enum(["always", "on_issue", "none"]).optional(),
+    replayable: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine((mapping, context) => {
+    if (mapping.fieldMappings !== undefined) {
+      for (const field of [
+        "mappingVersion",
+        "sourceSchemaVersion",
+        "targetIdentity",
+        "driftPolicy",
+        "lateArrivalPolicy",
+        "humanCheckpoint",
+        "replayable",
+      ] as const) {
+        if (mapping[field] === undefined) {
+          context.addIssue({
+            code: "custom",
+            path: [field],
+            message: `An executable mapping requires ${field}.`,
+          });
+        }
+      }
+    }
+    if (mapping.replayable && !mapping.idempotencyPath) {
+      context.addIssue({
+        code: "custom",
+        path: ["idempotencyPath"],
+        message: "A replayable mapping requires idempotencyPath.",
+      });
+    }
+  });
+const federatedSourceEnvelopeSchema = z
+  .object({
+    sourceSystem: nonBlankStringSchema,
+    sourceLocator: nonBlankStringSchema,
+    sourceRecordKey: nonBlankStringSchema,
+    sourceSchemaVersion: nonBlankStringSchema,
+    payload: strictJsonObjectSchema,
+    eventTime: nonBlankStringSchema,
+    observedTime: nonBlankStringSchema,
+    authenticationState: sourceAuthenticationStateSchema,
+    authorityRef: nonBlankStringSchema,
+    dataClassification: nonBlankStringSchema,
+    purposeTags: nonEmptyUniqueStringsSchema,
+    retentionPolicy: strictJsonObjectSchema,
+    contentHash: sha256Schema.optional(),
+  })
+  .strict();
+const acceptedIdempotencyRecordSchema = z
+  .object({
+    idempotencyKey: sha256Schema,
+    sourcePayloadHash: sha256Schema,
+    canonicalOutputHash: sha256Schema,
+  })
+  .strict();
+const governedSourceMappingToolInputSchema = guardedObjectInputSchema(
+  {
+    mapping: sourceMappingSchema,
+    envelope: federatedSourceEnvelopeSchema,
+    latestAcceptedEventTime: nonBlankStringSchema.nullable().optional(),
+    acceptedIdempotencyRecords: z
+      .array(acceptedIdempotencyRecordSchema)
+      .optional(),
+  },
+  { strict: true },
+);
+
+const sourceMappingIssueSchema = z
+  .object({
+    code: nonBlankStringSchema,
+    severity: z.enum(["error", "review", "warning"]),
+    message: nonBlankStringSchema,
+    sourcePath: z.string().nullable(),
+    targetProperty: z.string().nullable(),
+  })
+  .strict();
+const canonicalFieldProvenanceSchema = z
+  .object({
+    sourceSystem: z.string(),
+    sourceLocator: z.string(),
+    sourceRecordKey: z.string(),
+    sourceSchemaVersion: z.string(),
+    sourcePath: z.string(),
+    sourceValueHash: sha256Schema,
+    sourcePayloadHash: sha256Schema,
+    mappingId: z.string(),
+    mappingHash: sha256Schema,
+    eventTime: z.string(),
+    observedTime: z.string(),
+    authenticationState: sourceAuthenticationStateSchema,
+    authorityRef: z.string(),
+    authorityDomain: safeNonBlankObjectKeySchema,
+    dataClassification: z.string(),
+    purposeTags: z.array(z.string()),
+    retentionPolicy: strictJsonObjectSchema,
+  })
+  .strict();
+const canonicalFieldValueSchema = z
+  .object({
+    propertyRef: safeNonBlankObjectKeySchema,
+    value: strictJsonValueSchema,
+    conflictPolicy: sourceConflictPolicySchema,
+    provenance: canonicalFieldProvenanceSchema,
+  })
+  .strict();
+const federatedCanonicalRecordSchema = z
+  .object({
+    objectRef: z.string(),
+    identity: z.record(safeNonBlankObjectKeySchema, strictJsonValueSchema),
+    fields: z.array(canonicalFieldValueSchema),
+  })
+  .strict();
+const sourceMappingReceiptSchema = z
+  .object({
+    receiptVersion: z.literal("t2k.source-mapping-receipt.v1"),
+    status: z.enum(["mapped", "quarantined", "rejected", "duplicate"]),
+    sourceSystem: z.string(),
+    sourceLocator: z.string(),
+    sourceRecordKey: z.string(),
+    sourceSchemaVersion: z.string(),
+    authenticationState: sourceAuthenticationStateSchema,
+    authorityRef: z.string(),
+    dataClassification: z.string(),
+    purposeTags: z.array(z.string()),
+    retentionPolicy: strictJsonObjectSchema,
+    mappingId: z.string(),
+    mappingVersion: z.string(),
+    mappingHash: sha256Schema,
+    sourcePayloadHash: sha256Schema,
+    canonicalOutputHash: sha256Schema,
+    idempotencyKey: sha256Schema,
+    eventTime: z.string(),
+    observedTime: z.string(),
+    lateArrival: z.boolean(),
+    duplicate: z.boolean(),
+    humanReviewRequired: z.boolean(),
+    driftPolicy: z.enum(["reject", "quarantine", "allow_with_review"]),
+    lateArrivalPolicy: z.enum(["reject", "quarantine", "accept_with_review"]),
+    issues: z.array(sourceMappingIssueSchema),
+    receiptHash: sha256Schema,
+  })
+  .strict();
+const executeSourceMappingResultSchema = z
+  .object({
+    canonicalRecord: federatedCanonicalRecordSchema,
+    receipt: sourceMappingReceiptSchema,
+  })
+  .strict();
+const canonicalAuthorityPolicySchema = z
+  .object({
+    policyId: nonBlankStringSchema,
+    policyVersion: nonBlankStringSchema,
+    prioritiesByDomain: z.record(
+      safeNonBlankObjectKeySchema,
+      nonEmptyUniqueStringsSchema,
+    ),
+  })
+  .strict();
+const canonicalReconciliationToolInputSchema = guardedObjectInputSchema(
+  {
+    results: z.array(executeSourceMappingResultSchema).min(1),
+    authorityPolicy: canonicalAuthorityPolicySchema,
+  },
+  { strict: true },
+);
+
+const entityIdentifierValueSchema = z.union([
+  nonBlankStringSchema,
+  z.number().finite(),
+]);
+const entityIdentifiersSchema = z
+  .record(safeNonBlankObjectKeySchema, entityIdentifierValueSchema)
+  .refine(
+    (identifiers) => Object.keys(identifiers).length > 0,
+    "At least one identifier is required.",
+  );
+const entityCandidateSchema = z
+  .object({
+    entityKey: nonBlankStringSchema,
+    identifiers: entityIdentifiersSchema,
+  })
+  .strict();
+const entityRuleSchema = z
+  .object({
+    identifier: safeNonBlankObjectKeySchema,
+    weight: z.number().finite().positive(),
+    requiredForAutomaticMatch: z.boolean().optional(),
+    caseInsensitive: z.boolean().optional(),
+  })
+  .strict();
+const entityLinkToolInputSchema = guardedObjectInputSchema(
+  {
+    sourceEntityKey: nonBlankStringSchema,
+    identifiers: entityIdentifiersSchema,
+    candidates: z
+      .array(entityCandidateSchema)
+      .refine(
+        (candidates) =>
+          new Set(candidates.map((candidate) => candidate.entityKey)).size ===
+          candidates.length,
+        "Candidate entity keys must be unique.",
+      ),
+    rules: z
+      .array(entityRuleSchema)
+      .min(1)
+      .refine(
+        (rules) =>
+          new Set(rules.map((rule) => rule.identifier)).size === rules.length,
+        "Rule identifiers must be unique.",
+      ),
+    automaticMatchThreshold: z.number().finite().positive().max(1).optional(),
+    reviewThreshold: z.number().finite().positive().max(1).optional(),
+    ambiguityMargin: z.number().finite().positive().max(1).optional(),
+  },
+  { strict: true },
+);
+
+const purposeAccessRuleSchema = z
+  .object({
+    ruleId: nonBlankStringSchema,
+    effect: z.enum(["allow", "deny"]),
+    roles: nonEmptyUniqueStringsSchema.optional(),
+    purposes: nonEmptyUniqueStringsSchema.optional(),
+    subjectRelationships: nonEmptyUniqueStringsSchema.optional(),
+    dataCategories: nonEmptyUniqueStringsSchema.optional(),
+    jurisdictions: nonEmptyUniqueStringsSchema.optional(),
+    attributeEquals: strictJsonObjectSchema
+      .refine(
+        (attributes) => Object.keys(attributes).length > 0,
+        "attributeEquals must not be empty.",
+      )
+      .optional(),
+    effectiveFrom: nonBlankStringSchema.optional(),
+    effectiveTo: nonBlankStringSchema.optional(),
+    reason: nonBlankStringSchema,
+  })
+  .strict();
+const purposeAccessPolicySchema = z
+  .object({
+    policyId: nonBlankStringSchema,
+    policyVersion: nonBlankStringSchema,
+    defaultEffect: z.literal("deny"),
+    rules: z
+      .array(purposeAccessRuleSchema)
+      .refine(
+        (rules) =>
+          new Set(rules.map((rule) => rule.ruleId)).size === rules.length,
+        "Rule IDs must be unique.",
+      ),
+  })
+  .strict();
+const purposeAccessRequestSchema = z
+  .object({
+    requestKey: nonBlankStringSchema,
+    principalId: nonBlankStringSchema,
+    principalRoles: nonEmptyUniqueStringsSchema,
+    purpose: nonBlankStringSchema,
+    subjectRef: nonBlankStringSchema,
+    subjectRelationship: nonBlankStringSchema,
+    dataCategories: nonEmptyUniqueStringsSchema,
+    jurisdiction: nonBlankStringSchema,
+    requestedAt: nonBlankStringSchema,
+    sourceRecordRefs: nonEmptyUniqueStringsSchema,
+    attributes: strictJsonObjectSchema.optional(),
+  })
+  .strict();
+const purposeLimitedAccessToolInputSchema = guardedObjectInputSchema(
+  {
+    policy: purposeAccessPolicySchema,
+    request: purposeAccessRequestSchema,
+  },
+  { strict: true },
+);
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -148,7 +690,7 @@ function safeErrorMessage(error: unknown) {
 
 function protectedTool<Input>(
   logger: (message: string, error?: unknown) => void,
-  operation: (input: Input) => unknown | Promise<unknown>
+  operation: (input: Input) => unknown | Promise<unknown>,
 ) {
   return async (input: Input): Promise<CallToolResult> => {
     try {
@@ -175,7 +717,7 @@ function asJsonObject(value: Record<string, unknown>): JsonObject {
 
 function registerSemanticTools(
   server: McpServer,
-  logger: (message: string, error?: unknown) => void
+  logger: (message: string, error?: unknown) => void,
 ) {
   server.registerTool(
     "validate_ontology_pack",
@@ -183,13 +725,13 @@ function registerSemanticTools(
       title: "Validate T2K ontology pack",
       description:
         "Validate one ontology-pack manifest against the exact public T2K schema.",
-      inputSchema: { manifest: z.unknown() },
+      inputSchema: guardedObjectInputSchema({ manifest: z.unknown() }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
     protectedTool(logger, ({ manifest }: { manifest: unknown }) =>
-      validateOntologyPackManifest(manifest)
-    )
+      validateOntologyPackManifest(manifest),
+    ),
   );
 
   server.registerTool(
@@ -198,13 +740,16 @@ function registerSemanticTools(
       title: "Compile T2K ontology packs",
       description:
         "Resolve and compile ontology-pack manifests deterministically from explicit roots and context values.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         manifests: z.array(z.unknown()),
         roots: z.array(
-          z.object({ ontologyId: z.string().min(1), version: z.string().min(1) })
+          z.object({
+            ontologyId: z.string().min(1),
+            version: z.string().min(1),
+          }),
         ),
         contextValues: jsonObjectSchema.optional(),
-      },
+      }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
@@ -214,8 +759,8 @@ function registerSemanticTools(
         manifests: unknown[];
         roots: Array<{ ontologyId: string; version: string }>;
         contextValues?: Record<string, unknown>;
-      }) => compileOntologyPackSet(input as CompileOntologyPackSetInput)
-    )
+      }) => compileOntologyPackSet(input as CompileOntologyPackSetInput),
+    ),
   );
 
   server.registerTool(
@@ -224,10 +769,10 @@ function registerSemanticTools(
       title: "Evaluate T2K reference policy",
       description:
         "Compute an action from an executable reference-policy specification and a state snapshot.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         specification: jsonObjectSchema,
         state: jsonObjectSchema,
-      },
+      }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
@@ -239,9 +784,9 @@ function registerSemanticTools(
       }) =>
         evaluateReferencePolicy(
           asJsonObject(input.specification),
-          asJsonObject(input.state)
-        )
-    )
+          asJsonObject(input.state),
+        ),
+    ),
   );
 
   server.registerTool(
@@ -250,11 +795,11 @@ function registerSemanticTools(
       title: "Evaluate held-out policy replay",
       description:
         "Compute held-out inverse-propensity replay for a candidate and baseline; no caller-supplied verdict is accepted.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         candidateSpecification: jsonObjectSchema,
         baselineSpecification: jsonObjectSchema,
         episodes: z.array(z.unknown()).min(1),
-      },
+      }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
@@ -269,8 +814,8 @@ function registerSemanticTools(
           candidateSpecification: asJsonObject(input.candidateSpecification),
           baselineSpecification: asJsonObject(input.baselineSpecification),
           episodes: input.episodes as ReferenceReplayEpisode[],
-        })
-    )
+        }),
+    ),
   );
 
   server.registerTool(
@@ -279,10 +824,10 @@ function registerSemanticTools(
       title: "Evaluate governed reward",
       description:
         "Compute a reward vector and guardrail-aware scalar from a declared reward specification and observations.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         rewardSpec: z.array(z.unknown()).min(1),
         observations: z.array(z.unknown()),
-      },
+      }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
@@ -292,28 +837,108 @@ function registerSemanticTools(
         evaluateReferenceReward({
           rewardSpec: input.rewardSpec as RewardDimensionSpec[],
           observations: input.observations as ReferenceRewardObservation[],
-        })
-    )
+        }),
+    ),
+  );
+
+  server.registerTool(
+    "map_governed_source_record",
+    {
+      title: "Map governed source record",
+      description:
+        "Deterministically map one supplied source envelope with an explicit governed mapping. Returns a canonical-record proposal and receipt only; it does not fetch, persist, authenticate, or accept the proposed facts as truth.",
+      inputSchema: governedSourceMappingToolInputSchema,
+      outputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    protectedTool(
+      logger,
+      (input: z.infer<typeof governedSourceMappingToolInputSchema>) =>
+        executeSourceMapping({
+          mapping: input.mapping as OntologyPackSourceMapping,
+          envelope: input.envelope as FederatedSourceEnvelope,
+          latestAcceptedEventTime: input.latestAcceptedEventTime,
+          acceptedIdempotencyRecords: input.acceptedIdempotencyRecords as
+            AcceptedIdempotencyRecord[] | undefined,
+        }),
+    ),
+  );
+
+  server.registerTool(
+    "propose_canonical_reconciliation",
+    {
+      title: "Propose canonical reconciliation",
+      description:
+        "Produce a deterministic, non-mutating reconciliation proposal from supplied mapping results and an explicit authority policy. Alternatives and evidence remain preserved; no source value is accepted, persisted, or promoted to truth.",
+      inputSchema: canonicalReconciliationToolInputSchema,
+      outputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    protectedTool(
+      logger,
+      (input: z.infer<typeof canonicalReconciliationToolInputSchema>) =>
+        reconcileCanonicalRecords({
+          results: input.results as ExecuteSourceMappingResult[],
+          authorityPolicy: input.authorityPolicy as CanonicalAuthorityPolicy,
+        }),
+    ),
+  );
+
+  server.registerTool(
+    "propose_entity_link",
+    {
+      title: "Propose entity link",
+      description:
+        "Score supplied candidate identifiers and return a reversible entity-link proposal. It never creates, mutates, or merges entities; ambiguous evidence routes to review.",
+      inputSchema: entityLinkToolInputSchema,
+      outputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    protectedTool(logger, (input: z.infer<typeof entityLinkToolInputSchema>) =>
+      resolveEntityCandidates(input as EntityResolutionInput),
+    ),
+  );
+
+  server.registerTool(
+    "evaluate_purpose_limited_access",
+    {
+      title: "Evaluate purpose-limited access",
+      description:
+        "Evaluate a supplied default-deny purpose-access policy and return a deterministic receipt. The result is not authentication, authorization enforcement, a credential, or permission to disclose data.",
+      inputSchema: purposeLimitedAccessToolInputSchema,
+      outputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    protectedTool(
+      logger,
+      (input: z.infer<typeof purposeLimitedAccessToolInputSchema>) =>
+        evaluatePurposeLimitedAccess(
+          input.policy as PurposeLimitedAccessPolicy,
+          input.request as PurposeLimitedAccessRequest,
+        ),
+    ),
   );
 }
 
 function registerLifecycleReadTools(
   server: McpServer,
   lifecycle: PostgresReferenceLifecycle,
-  logger: (message: string, error?: unknown) => void
+  logger: (message: string, error?: unknown) => void,
 ) {
   server.registerTool(
     "get_active_policy",
     {
       title: "Get active T2K policy",
       description: "Read the deployed policy bound to a decision type.",
-      inputSchema: { decisionType: z.string().min(1) },
+      inputSchema: guardedObjectInputSchema({
+        decisionType: z.string().min(1),
+      }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
     protectedTool(logger, ({ decisionType }: { decisionType: string }) =>
-      lifecycle.getActivePolicy(decisionType)
-    )
+      lifecycle.getActivePolicy(decisionType),
+    ),
   );
 
   server.registerTool(
@@ -325,7 +950,7 @@ function registerLifecycleReadTools(
       outputSchema,
       annotations: readOnlyAnnotations,
     },
-    protectedTool(logger, () => lifecycle.snapshot())
+    protectedTool(logger, () => lifecycle.snapshot()),
   );
 
   server.registerTool(
@@ -336,7 +961,7 @@ function registerLifecycleReadTools(
       outputSchema,
       annotations: readOnlyAnnotations,
     },
-    protectedTool(logger, () => lifecycle.verifyEventChain())
+    protectedTool(logger, () => lifecycle.verifyEventChain()),
   );
 }
 
@@ -344,19 +969,20 @@ function registerLifecycleMutationTools(
   server: McpServer,
   lifecycle: PostgresReferenceLifecycle,
   actor: ReferenceLifecycleActor,
-  logger: (message: string, error?: unknown) => void
+  logger: (message: string, error?: unknown) => void,
 ) {
   server.registerTool(
     "create_reasoning_policy",
     {
       title: "Create T2K reasoning policy",
-      description: "Create a local reasoning-policy family as the configured MCP agent.",
-      inputSchema: {
+      description:
+        "Create a local reasoning-policy family as the configured MCP agent.",
+      inputSchema: guardedObjectInputSchema({
         policyKey: z.string().min(1),
         label: z.string().min(1),
         description: z.string().optional(),
         decisionType: z.string().min(1),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -367,8 +993,8 @@ function registerLifecycleMutationTools(
         label: string;
         description?: string;
         decisionType: string;
-      }) => lifecycle.createPolicy(input, actor)
-    )
+      }) => lifecycle.createPolicy(input, actor),
+    ),
   );
 
   server.registerTool(
@@ -377,7 +1003,7 @@ function registerLifecycleMutationTools(
       title: "Propose T2K policy version",
       description:
         "Propose an executable local policy version. Acceptance and deployment remain human-only outside MCP.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         policyKey: z.string().min(1),
         policyVersion: z.string().min(1),
         learningMode: learningModeSchema,
@@ -385,7 +1011,7 @@ function registerLifecycleMutationTools(
         rewardSpec: z.array(z.unknown()).min(1),
         parentVersionId: z.string().nullable().optional(),
         rationale: z.string().min(1),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -415,9 +1041,9 @@ function registerLifecycleMutationTools(
             parentVersionId: input.parentVersionId,
             rationale: input.rationale,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -426,7 +1052,7 @@ function registerLifecycleMutationTools(
       title: "Create T2K Decision Context",
       description:
         "Freeze current state, objective, constraints, authority, policy binding, and learning contract.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         contextKey: z.string().min(1),
         question: z.string().min(1),
         decisionType: z.string().min(1),
@@ -435,7 +1061,7 @@ function registerLifecycleMutationTools(
         constraints: z.array(z.unknown()).optional(),
         requiredAuthority: jsonObjectSchema.optional(),
         learningContract: jsonObjectSchema,
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -465,9 +1091,9 @@ function registerLifecycleMutationTools(
             learningContract:
               input.learningContract as unknown as DecisionLearningContract,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -476,13 +1102,13 @@ function registerLifecycleMutationTools(
       title: "Compute T2K recommendation",
       description:
         "Run the policy frozen in a Decision Context. Human authorization remains outside MCP.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         contextKey: z.string().min(1),
         recommendationKey: z.string().min(1),
         behaviorProbability: z.number().positive().max(1).optional(),
         rationale: z.string().optional(),
         reasoningTrace: jsonObjectSchema.optional(),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -505,9 +1131,9 @@ function registerLifecycleMutationTools(
               ? asJsonObject(input.reasoningTrace)
               : undefined,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -516,13 +1142,13 @@ function registerLifecycleMutationTools(
       title: "Open T2K decision episode",
       description:
         "Open an episode from an already human-authorized decision and its immutable context binding.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         episodeKey: z.string().min(1),
         contextKey: z.string().min(1),
         authorizedDecisionId: z.string().min(1),
         policyVersionId: z.string().optional(),
         externalEffect: z.boolean().optional(),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -534,8 +1160,8 @@ function registerLifecycleMutationTools(
         authorizedDecisionId: string;
         policyVersionId?: string;
         externalEffect?: boolean;
-      }) => lifecycle.openEpisode(input, actor)
-    )
+      }) => lifecycle.openEpisode(input, actor),
+    ),
   );
 
   server.registerTool(
@@ -544,7 +1170,7 @@ function registerLifecycleMutationTools(
       title: "Record T2K execution receipt",
       description:
         "Record connector evidence, reconciliation state, and rollback contract for an open episode.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         episodeId: z.string().min(1),
         receiptKey: z.string().min(1),
         idempotencyKey: z.string().min(1),
@@ -558,7 +1184,7 @@ function registerLifecycleMutationTools(
         rollbackContract: jsonObjectSchema.optional(),
         reconciliationStatus: z.enum(["pending", "reconciled", "mismatch"]),
         receivedAt: z.string().optional(),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -597,9 +1223,9 @@ function registerLifecycleMutationTools(
             reconciliationStatus: input.reconciliationStatus,
             receivedAt: input.receivedAt,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -608,7 +1234,7 @@ function registerLifecycleMutationTools(
       title: "Record T2K observation",
       description:
         "Attach provenance-bearing outcome evidence to an open decision episode.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         episodeId: z.string().min(1),
         measureRef: z.string().min(1),
         observedValue: z.unknown(),
@@ -619,7 +1245,7 @@ function registerLifecycleMutationTools(
         provenance: jsonObjectSchema.optional(),
         attributionConfidence: z.number().min(0).max(1).nullable().optional(),
         observedAt: z.string().min(1),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -652,9 +1278,9 @@ function registerLifecycleMutationTools(
             attributionConfidence: input.attributionConfidence,
             observedAt: input.observedAt,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -663,11 +1289,11 @@ function registerLifecycleMutationTools(
       title: "Assess T2K reward",
       description:
         "Compute the frozen reward contract from recorded observations; the caller cannot provide a verdict.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         episodeId: z.string().min(1),
         assessmentKey: z.string().min(1),
         attribution: jsonObjectSchema.optional(),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -686,9 +1312,9 @@ function registerLifecycleMutationTools(
               ? asJsonObject(input.attribution)
               : undefined,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -697,7 +1323,7 @@ function registerLifecycleMutationTools(
       title: "Propose T2K learning candidate",
       description:
         "Propose a policy candidate from closed training episodes. Evaluation and promotion remain human-only outside MCP.",
-      inputSchema: {
+      inputSchema: guardedObjectInputSchema({
         candidateKey: z.string().min(1),
         policyKey: z.string().min(1),
         sourcePolicyVersionId: z.string().min(1),
@@ -706,7 +1332,7 @@ function registerLifecycleMutationTools(
         proposedRewardSpec: z.array(z.unknown()).min(1).optional(),
         trainingEpisodeIds: z.array(z.string().min(1)).min(1),
         rationale: z.string().min(1),
-      },
+      }),
       outputSchema,
       annotations: mutationAnnotations,
     },
@@ -730,19 +1356,18 @@ function registerLifecycleMutationTools(
             proposedPolicyVersion: input.proposedPolicyVersion,
             proposedSpecification: asJsonObject(input.proposedSpecification),
             proposedRewardSpec: input.proposedRewardSpec as
-              | RewardDimensionSpec[]
-              | undefined,
+              RewardDimensionSpec[] | undefined,
             trainingEpisodeIds: input.trainingEpisodeIds,
             rationale: input.rationale,
           },
-          actor
-        )
-    )
+          actor,
+        ),
+    ),
   );
 }
 
 export async function createT2kMcpRuntime(
-  options: CreateT2kMcpRuntimeOptions = {}
+  options: CreateT2kMcpRuntimeOptions = {},
 ): Promise<T2kMcpRuntime> {
   if (options.lifecycle && options.connectionString) {
     throw new Error("Provide lifecycle or connectionString, not both.");
@@ -751,7 +1376,7 @@ export async function createT2kMcpRuntime(
   const allowMutations = options.allowMutations ?? false;
   const actorId = options.actorId?.trim();
   const hasLifecycleConfiguration = Boolean(
-    options.lifecycle || options.connectionString
+    options.lifecycle || options.connectionString,
   );
   if (allowMutations && !hasLifecycleConfiguration) {
     throw new Error("Mutation tools require a configured Postgres lifecycle.");
@@ -782,7 +1407,10 @@ export async function createT2kMcpRuntime(
         try {
           await lifecycle.close();
         } catch (closeError) {
-          logger("T2K MCP could not close its failed migration pool.", closeError);
+          logger(
+            "T2K MCP could not close its failed migration pool.",
+            closeError,
+          );
         }
       }
       throw error;
@@ -811,9 +1439,7 @@ export async function createT2kMcpRuntime(
     mutationToolsEnabled: allowMutations,
     actor,
     tools: [...tools],
-    omittedHumanGovernanceOperations: [
-      ...T2K_MCP_HUMAN_GOVERNANCE_OPERATIONS,
-    ],
+    omittedHumanGovernanceOperations: [...T2K_MCP_HUMAN_GOVERNANCE_OPERATIONS],
   };
   const server = new McpServer({
     name: options.serverName ?? "t2k-mcp",
@@ -837,7 +1463,7 @@ export async function createT2kMcpRuntime(
           text: JSON.stringify(capabilities, null, 2),
         },
       ],
-    })
+    }),
   );
 
   if (lifecycle) {
@@ -867,14 +1493,19 @@ export async function createT2kMcpRuntime(
             },
           ],
         };
-      }
+      },
     );
   }
 
-  registerSemanticTools(server, logger);
-  if (lifecycle) registerLifecycleReadTools(server, lifecycle, logger);
-  if (lifecycle && actor) {
-    registerLifecycleMutationTools(server, lifecycle, actor, logger);
+  const restoreSetRequestHandler = installRawToolCallOwnKeyGuard(server);
+  try {
+    registerSemanticTools(server, logger);
+    if (lifecycle) registerLifecycleReadTools(server, lifecycle, logger);
+    if (lifecycle && actor) {
+      registerLifecycleMutationTools(server, lifecycle, actor, logger);
+    }
+  } finally {
+    restoreSetRequestHandler();
   }
 
   let closed = false;

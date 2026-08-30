@@ -5,7 +5,27 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const templateRoot = path.join(packageRoot, "template");
+const profiles = {
+  "decision-loop": {
+    templateRoot: path.join(packageRoot, "template"),
+  },
+  "integration-hub": {
+    templateRoot: path.join(packageRoot, "template-integration-hub"),
+  },
+};
+
+export const CREATE_T2K_PROFILES = Object.freeze(Object.keys(profiles));
+
+function requireProfile(value) {
+  if (typeof value !== "string" || !Object.hasOwn(profiles, value)) {
+    throw new Error(
+      `Unsupported profile: ${String(value)}. Choose one of: ${CREATE_T2K_PROFILES.join(
+        ", "
+      )}.`
+    );
+  }
+  return value;
+}
 
 export function parseArguments(argumentsList) {
   const options = {
@@ -13,11 +33,14 @@ export function parseArguments(argumentsList) {
     install: true,
     help: false,
     version: false,
+    profile: "decision-loop",
   };
   const positionals = [];
   let parseOptions = true;
+  let profileProvided = false;
 
-  for (const argument of argumentsList) {
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const argument = argumentsList[index];
     if (parseOptions && argument === "--") {
       parseOptions = false;
     } else if (parseOptions && ["-h", "--help"].includes(argument)) {
@@ -28,6 +51,27 @@ export function parseArguments(argumentsList) {
       options.install = false;
     } else if (parseOptions && argument === "--yes") {
       // The scaffolder has no interactive choices; this keeps npx usage familiar.
+    } else if (parseOptions && argument === "--profile") {
+      if (profileProvided) {
+        throw new Error("Provide --profile at most once.");
+      }
+      const value = argumentsList[index + 1];
+      if (!value || value.startsWith("-")) {
+        throw new Error("--profile requires a profile name.");
+      }
+      options.profile = requireProfile(value);
+      profileProvided = true;
+      index += 1;
+    } else if (parseOptions && argument.startsWith("--profile=")) {
+      if (profileProvided) {
+        throw new Error("Provide --profile at most once.");
+      }
+      const value = argument.slice("--profile=".length);
+      if (!value) {
+        throw new Error("--profile requires a profile name.");
+      }
+      options.profile = requireProfile(value);
+      profileProvided = true;
     } else if (parseOptions && argument.startsWith("-")) {
       throw new Error(`Unknown option: ${argument}`);
     } else {
@@ -136,16 +180,18 @@ function shellDisplay(value) {
 export async function scaffoldProject({
   targetDirectory,
   install = true,
+  profile = "decision-loop",
   cwd = process.cwd(),
   stdout = process.stdout,
 }) {
   if (typeof targetDirectory !== "string" || !targetDirectory.trim()) {
     throw new Error("Project directory is required.");
   }
+  const selectedProfile = requireProfile(profile);
   const targetPath = path.resolve(cwd, targetDirectory);
   const projectName = packageNameFor(targetPath);
   await ensureEmptyDirectory(targetPath);
-  await copyTemplate(templateRoot, targetPath, {
+  await copyTemplate(profiles[selectedProfile].templateRoot, targetPath, {
     "{{PROJECT_NAME}}": projectName,
   });
 
@@ -169,9 +215,24 @@ export async function scaffoldProject({
     stdout.write("  npm install\n");
   }
   stdout.write("  npm start\n\n");
-  stdout.write("The first run computes a recommendation; a human must still authorize it.\n");
-  stdout.write("Run `npm run db:up && npm run lifecycle` for the persisted closed loop.\n");
-  stdout.write("Use `npm run db:down` to stop it or `npm run db:reset` to delete its volume.\n");
+  if (selectedProfile === "integration-hub") {
+    stdout.write(
+      "The run maps two synthetic sources into a deterministic evidence proposal for human review.\n"
+    );
+    stdout.write(
+      "It does not authenticate either source, mutate source records, or promote a selected value to accepted truth.\n"
+    );
+  } else {
+    stdout.write(
+      "The first run computes a recommendation; a human must still authorize it.\n"
+    );
+    stdout.write(
+      "Run `npm run db:up && npm run lifecycle` for the persisted closed loop.\n"
+    );
+    stdout.write(
+      "Use `npm run db:down` to stop it or `npm run db:reset` to delete its volume.\n"
+    );
+  }
 
-  return { targetPath, projectName };
+  return { targetPath, projectName, profile: selectedProfile };
 }

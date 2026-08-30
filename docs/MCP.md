@@ -9,7 +9,7 @@ the same schema, policy, reward, and lifecycle rules.
 
 | Mode | Configuration | Intended use |
 | --- | --- | --- |
-| Semantic-only | No environment variables | Validate packs and compute policy, replay, and reward results |
+| Semantic-only | No environment variables | Validate packs and compute policy, replay, reward, mapping, reconciliation, entity-link, and purpose-access results |
 | Lifecycle read-only | `T2K_DATABASE_URL` | Inspect deployed policy, lifecycle state, aggregate evidence, and the event chain |
 | Agent mutation | Database URL, mutation opt-in, fixed actor ID | Propose and record machine-authored lifecycle facts without impersonating a human |
 
@@ -51,8 +51,20 @@ operations.
 5. Call `evaluate_reference_replay` with disjoint held-out episodes before a
    human considers promotion.
 
+For an integration workflow, call `map_governed_source_record` for each
+caller-supplied immutable envelope, pass the complete results and an explicit
+authority policy to `propose_canonical_reconciliation`, use
+`propose_entity_link` for reversible candidate scoring, and call
+`evaluate_purpose_limited_access` for a default-deny policy receipt. These four
+tools are read-only in every mode and do not fetch sources, use credentials,
+persist evidence, merge entities, accept truth, authenticate principals, or
+enforce disclosure.
+
 Tool results contain both human-readable JSON text and `structuredContent`, so
 hosts can display the result or pass it to another tool without scraping prose.
+
+See the [integration-hub tutorial](INTEGRATION_HUB_TUTORIAL.md) for a runnable
+two-source project and the human-plus-AI operating boundary.
 
 ## Local Closed-Loop Workflow
 

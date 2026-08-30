@@ -17,15 +17,17 @@ The package includes:
 - an executable reference rule policy and held-out replay evaluator;
 - deterministic reward assessment and per-policy aggregation;
 - a Postgres reference lifecycle for contexts, episodes, receipts, evaluation,
-  promotion, rollback, and an append-only event chain;
+  promotion, rollback, immutable reconciliation proposals, canonical revision
+  lineage, governed reactivation, and an append-only event chain;
 - `T2kClient` for trusted server-side calls to a T2K control plane.
 
 The package uses Ajv for exact schema execution and `pg` for the optional local
 lifecycle. Node.js 20.10 or newer is required. The compiler and Postgres
 subpaths are server-side modules.
 
-Source mapping, canonical reconciliation, entity resolution, and purpose-access
-APIs described below are published in `@t2kai/core@0.3.0`.
+Source mapping, canonical reconciliation, entity resolution, purpose-access,
+and persisted reconciliation-review APIs described below are published in
+`@t2kai/core@0.4.0`.
 
 ## Compile Packs Locally
 
@@ -367,6 +369,96 @@ Guardrail failures remain terminal evidence: the business `scalarReward` stays
 `null` so objectives cannot trade off a violated guardrail, while the separate
 `evaluationReward` receives a fixed `-1` penalty and replay fails any candidate
 that reproduces the violating action.
+
+### Persist reconciliation review and lineage
+
+Deterministic `reconcileCanonicalRecords` output remains non-mutating.
+Continuing from the `proposal` above, a trusted application may separately
+persist a reviewable canonical proposal with the Postgres lifecycle:
+
+```ts
+import {
+  PostgresReferenceLifecycle,
+  computeReferenceReconciliationProposalHash,
+} from "@t2kai/core/postgres";
+
+const proposalBody = {
+  proposalKey: "party:P-483:revision-1",
+  objectType: "party",
+  objectKey: "P-483",
+  baseRevisionId: null,
+  proposedContent: { partyId: "P-483", status: "active" },
+  evidence: {
+    reconciliationProposalHash: proposal.proposalHash,
+    sourceReceiptHashes: proposal.inputReceiptHashes,
+  },
+  executionReceiptIds: [],
+  requiredReviewerRole: "records_steward",
+  rationale: "Propose the reviewed source evidence as canonical revision 1.",
+};
+const proposalHash = computeReferenceReconciliationProposalHash(proposalBody);
+const persisted = await lifecycle.createReconciliationProposal(
+  {
+    ...proposalBody,
+    proposalHash,
+    idempotencyKey: "party:P-483:proposal-1",
+  },
+  { actorType: "agent", actorId: "agent:integration-router" },
+);
+
+const disposition = await lifecycle.reviewReconciliationProposal(
+  persisted.id,
+  {
+    objectType: "party",
+    objectKey: "P-483",
+    expectedProposalHash: persisted.proposalHash,
+    expectedDispositionVersion: 0,
+    decision: "approved",
+    reviewerRole: "records_steward",
+    rationale: "The evidence and authority policy support this revision.",
+    idempotencyKey: "party:P-483:review-1",
+  },
+  { actorType: "human", actorId: "human:records-steward-27" },
+);
+
+const accepted = await lifecycle.acceptReconciliationProposal(
+  persisted.id,
+  {
+    objectType: "party",
+    objectKey: "P-483",
+    expectedProposalHash: persisted.proposalHash,
+    dispositionId: disposition.id,
+    expectedActiveRevisionId: null,
+    acceptedByRole: "records_activation_owner",
+    rationale: "Activate the independently approved canonical revision.",
+    idempotencyKey: "party:P-483:activation-1",
+  },
+  { actorType: "human", actorId: "human:activation-owner-11" },
+);
+
+const lineage = await lifecycle.getReconciliationLineage("party", "P-483");
+console.log(lineage?.activeRevision?.id === accepted.revision.id);
+```
+
+`executionReceiptIds` refers only to persisted lifecycle execution receipts.
+At proposal creation, each linked receipt is copied into immutable
+`executionReceipts` evidence with its own digest; the ordered evidence bundle is
+bound by `executionEvidenceHash`. Source-mapping receipts and the deterministic
+reconciliation proposal can be retained as complete bodies or hashes inside
+immutable caller `evidence`.
+
+Proposal creation verifies a caller-supplied self-hash and the current base
+revision. Review requires a human with the proposal's declared role. Acceptance
+requires a separate human, the approved disposition, the same proposal hash,
+and an unchanged active revision. Accepted revisions and activation rows are
+append-only. `rollbackReconciliationRevision` activates an exact prior ancestor
+without deleting later history. `reactivateReconciliationRevision` provides a
+separately governed roll-forward to an exact existing revision; it appends a
+new activation rather than copying or rewriting content.
+`getReconciliationLineage` returns the object, active revision, proposals,
+dispositions, revisions, and all acceptance, rollback, and reactivation events.
+Changed idempotent retries, stale calls, cross-object references, duplicate
+canonical content, and self-review fail closed.
 
 ### Trust boundary
 

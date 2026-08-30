@@ -1,0 +1,24 @@
+{
+  "sourceSystem": "synthetic-registry-alpha",
+  "sourceLocator": "synthetic://registry-alpha/party/ALPHA-0042",
+  "sourceRecordKey": "ALPHA-0042",
+  "sourceSchemaVersion": "party-record-v1",
+  "eventTime": "2026-08-29T15:00:00.000Z",
+  "observedTime": "2026-08-29T15:00:05.000Z",
+  "authenticationState": "unknown",
+  "authorityRef": "synthetic_registry_alpha",
+  "dataClassification": "synthetic_demo",
+  "purposeTags": ["integration_hub_demo"],
+  "retentionPolicy": {
+    "policyId": "synthetic-demo-30d",
+    "expiresAt": "2026-09-28"
+  },
+  "payload": {
+    "record_id": "ALPHA-0042",
+    "party_key": " shared-0042 ",
+    "display_name": " Sample Services LLC ",
+    "registry_state": " ACTIVE ",
+    "event_time": "2026-08-29T15:00:00.000Z",
+    "observed_time": "2026-08-29T15:00:05.000Z"
+  }
+}

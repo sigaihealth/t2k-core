@@ -1,0 +1,10 @@
+{
+  "policyId": "synthetic-party-authority",
+  "policyVersion": "1.0.0",
+  "prioritiesByDomain": {
+    "registry_status": [
+      "synthetic_registry_alpha",
+      "synthetic_registry_beta"
+    ]
+  }
+}

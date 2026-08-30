@@ -15,7 +15,10 @@ const smokeRoot = await mkdtemp(path.join(tmpdir(), "t2k-core-smoke-"));
 const smokeProgram = String.raw`
 import { T2kClient, parseOntologyPackManifest, reconcileCanonicalRecords } from "@t2kai/core";
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
-import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
+import {
+  PostgresReferenceLifecycle,
+  computeReferenceReconciliationProposalHash,
+} from "@t2kai/core/postgres";
 import { readFile } from "node:fs/promises";
 
 const manifest = {
@@ -66,6 +69,17 @@ const schemaUrl = import.meta.resolve(
 );
 const schema = JSON.parse(await readFile(new URL(schemaUrl), "utf8"));
 const client = new T2kClient({ baseUrl: "https://studio.t2k.ai/" });
+const reconciliationHash = computeReferenceReconciliationProposalHash({
+  proposalKey: "smoke:proposal-1",
+  objectType: "business",
+  objectKey: "business-1",
+  baseRevisionId: null,
+  proposedContent: { name: "Synthetic Business" },
+  evidence: { synthetic: true },
+  executionReceiptIds: [],
+  requiredReviewerRole: "records_steward",
+  rationale: "Verify the packed reconciliation hash export.",
+});
 
 if (
   !parsed ||
@@ -73,6 +87,7 @@ if (
   compiled.packs.length !== 1 ||
   schema.title !== "T2K Ontology Pack Manifest" ||
   typeof PostgresReferenceLifecycle !== "function" ||
+  !/^[0-9a-f]{64}$/.test(reconciliationHash) ||
   typeof reconcileCanonicalRecords !== "function" ||
   !client
 ) {

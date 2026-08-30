@@ -1,8 +1,10 @@
 # `@t2kai/mcp`
 
 Local stdio MCP server for the open T2K ontology, decision, and learning
-runtime. It lets an MCP host validate and compile ontology packs, execute and
-evaluate policies, and optionally inspect or write a local governed lifecycle.
+runtime. It lets an MCP host validate and compile ontology packs, map and
+reconcile supplied evidence, propose reversible entity links, evaluate
+purpose-limited access and policies, and optionally inspect or write a local
+governed lifecycle.
 
 Node.js 20.10 or newer is required.
 
@@ -29,8 +31,54 @@ deterministic, read-only computation:
 - `evaluate_reference_policy`
 - `evaluate_reference_replay`
 - `evaluate_reference_reward`
+- `map_governed_source_record`
+- `propose_canonical_reconciliation`
+- `propose_entity_link`
+- `evaluate_purpose_limited_access`
 
 The `t2k://capabilities` resource reports the active mode and exact tool set.
+
+## Evaluate Integration Evidence Without Writing It
+
+The four integration tools are available in the database-free safe default
+mode. They accept only caller-supplied JSON and are deterministic, read-only
+computations:
+
+- `map_governed_source_record` applies one explicit executable source mapping
+  to one immutable source envelope. It returns a canonical-record proposal and
+  a source receipt, including rejected, quarantined, duplicate, and
+  human-review state. It does not fetch a source, use credentials, persist the
+  receipt, or accept mapped values as truth.
+- `propose_canonical_reconciliation` checks supplied mapping receipts,
+  canonical-output hashes, identity evidence, and field provenance before
+  applying an explicit versioned authority policy. It preserves alternatives
+  and returns a non-mutating proposal; it does not update a canonical store or
+  promote selected evidence.
+- `propose_entity_link` scores supplied candidates under explicit identifier
+  rules. Its result is reversible and may require review. It never creates or
+  merges entities.
+- `evaluate_purpose_limited_access` applies an explicit-deny-precedence,
+  default-deny policy and returns a deterministic receipt. The receipt is not
+  authentication, an IAM decision, a bearer token, or permission to disclose
+  data.
+
+A typical local analysis maps independently supplied records and then passes
+their complete results to `propose_canonical_reconciliation`:
+
+```text
+source envelope + reviewed mapping -> map_governed_source_record -> receipt
+receipts + authority policy -> propose_canonical_reconciliation -> proposal
+```
+
+Inputs use strict JSON schemas: unknown control fields such as `persist`,
+`merge`, credentials, or caller-supplied approval state are rejected before
+execution. Before schema parsing can strip or normalize anything, every nested
+object is recursively inspected by own property descriptor; `__proto__`,
+`prototype`, and `constructor` keys, accessors, symbols, and cyclic object
+graphs fail closed. Ordinary JSON objects and null-prototype data objects remain
+valid. Semantic inconsistencies that pass structural parsing still fail closed
+in the core result, such as an invalid source-receipt hash or an invalid
+purpose-access request time.
 
 ## Add a Local Lifecycle
 
@@ -106,6 +154,10 @@ The runtime closes only database pools that it creates itself.
 
 - Treat MCP tool arguments as untrusted input; the core runtime validates
   manifests, policy contracts, state, rewards, receipts, and lifecycle order.
+- Treat source receipts, reconciliation and entity-link proposals, and access
+  receipts as evidence artifacts only. Persisting evidence, authenticating a
+  principal, accepting facts, merging entities, and enforcing disclosure all
+  remain responsibilities of the calling system and its human governance.
 - Use a dedicated database role and database. Database ownership can bypass the
   append-only trigger, so independently anchor event heads when non-repudiation
   is required.
