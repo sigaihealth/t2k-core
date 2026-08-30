@@ -15,6 +15,13 @@ const STATIC_FILES = new Map([
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
 ]);
 
+const RESOURCE_METHODS = new Map([
+  ["/health", ["GET", "HEAD"]],
+  ["/api/demo", ["GET", "HEAD"]],
+  ["/api/reviews", ["POST"]],
+  ...[...STATIC_FILES.keys()].map((pathname) => [pathname, ["GET", "HEAD"]]),
+]);
+
 const SECURITY_HEADERS = {
   "Content-Security-Policy":
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
@@ -33,6 +40,34 @@ function jsonResponse(response, statusCode, payload, extraHeaders = {}) {
     ...extraHeaders,
   });
   response.end(body);
+}
+
+function loopbackHost(hostHeader) {
+  if (typeof hostHeader !== "string" || hostHeader.length === 0) return null;
+  try {
+    const parsed = new URL(`http://${hostHeader}`);
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) {
+      return null;
+    }
+    return parsed.host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function mutationOriginMatchesHost(request) {
+  const origin = request.headers.origin;
+  if (origin === undefined) return true;
+  const expectedHost = loopbackHost(request.headers.host);
+  try {
+    const parsed = new URL(origin);
+    return (
+      parsed.protocol === "http:" &&
+      loopbackHost(parsed.host) === expectedHost
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function readJsonBody(request) {
@@ -83,8 +118,33 @@ export async function createDemoServer({ clock } = {}) {
 
   return createServer(async (request, response) => {
     try {
+      if (!loopbackHost(request.headers.host)) {
+        return jsonResponse(response, 403, {
+          error: "The demo accepts only loopback Host values.",
+        });
+      }
       const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
       const { pathname } = requestUrl;
+      const allowedMethods = RESOURCE_METHODS.get(pathname);
+
+      if (allowedMethods && !allowedMethods.includes(request.method ?? "")) {
+        response.writeHead(405, {
+          ...SECURITY_HEADERS,
+          Allow: allowedMethods.join(", "),
+          "Content-Length": "0",
+        });
+        return response.end();
+      }
+
+      if (
+        request.method === "POST" &&
+        pathname === "/api/reviews" &&
+        !mutationOriginMatchesHost(request)
+      ) {
+        return jsonResponse(response, 403, {
+          error: "The review origin must match this loopback demo server.",
+        });
+      }
 
       if ((request.method === "GET" || request.method === "HEAD") && pathname === "/health") {
         return jsonResponse(response, 200, {
@@ -114,14 +174,6 @@ export async function createDemoServer({ clock } = {}) {
         return;
       }
 
-      if (!["GET", "HEAD", "POST"].includes(request.method ?? "")) {
-        response.writeHead(405, {
-          ...SECURITY_HEADERS,
-          Allow: "GET, HEAD, POST",
-          "Content-Length": "0",
-        });
-        return response.end();
-      }
       return jsonResponse(response, 404, { error: "Not found." });
     } catch (error) {
       const statusCode =

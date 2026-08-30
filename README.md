@@ -49,7 +49,7 @@ network, private packs, and customer data are separate products.
 Requirements: Node.js 20.10 or newer and npm.
 
 ```bash
-npx create-t2k@0.4.1 my-decision-loop
+npx create-t2k@0.4.2 my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -73,7 +73,7 @@ to delete the disposable lifecycle data.
 Generate a governed integration-hub project instead:
 
 ```bash
-npx create-t2k@0.4.1 my-integration-hub --profile integration-hub
+npx create-t2k@0.4.2 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -137,11 +137,11 @@ npm start --prefix examples/integration-hub-demo
 ```
 
 Open <http://127.0.0.1:4173>. The demo maps three synthetic agency schemas,
-preserves receipt-bound conflicts, proves proposal stability across three input
-orders, routes an ambiguous reversible entity link to review, compares allow
-and default-deny access receipts, and records only an in-memory human
-disposition. It does not activate a canonical revision, merge an entity, or
-enforce access. Follow the
+preserves receipt-bound conflicts, proves proposal stability across all six
+input permutations, routes an ambiguous reversible entity link to review,
+compares allow and default-deny access receipts, and records only an in-memory
+human disposition. It does not activate a canonical revision, merge an entity,
+or enforce access. Follow the
 [integration-hub tutorial](docs/INTEGRATION_HUB_TUTORIAL.md) for the complete
 walkthrough and safe experiment rules.
 
@@ -176,7 +176,7 @@ The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm install @t2kai/core@0.4.1
+npm install @t2kai/core@0.4.2
 npm install @t2kai/mcp@0.3.0
 ```
 
@@ -195,7 +195,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.4.1` includes the governed source-mapping,
+`@t2kai/core@0.4.2` includes the governed source-mapping,
 canonical-reconciliation, entity-resolution, and purpose-access exports plus
 the persisted reconciliation review and lineage path documented in the core
 guide.

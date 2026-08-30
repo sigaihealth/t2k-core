@@ -847,6 +847,90 @@ describe("source integration", () => {
     );
   });
 
+  it("rejects schema-invalid executable identity and field definitions", () => {
+    const identityField = sourceMapping.fieldMappings!.find(
+      (field) => field.targetProperty === "benefits:person.external_id"
+    )!;
+    const displayNameField = sourceMapping.fieldMappings!.find(
+      (field) => field.targetProperty === "benefits:person.display_name"
+    )!;
+    const mappings = [
+      {
+        ...structuredClone(sourceMapping),
+        fieldMappings: sourceMapping.fieldMappings!.map((field) =>
+          field.targetProperty === identityField.targetProperty
+            ? { ...field, targetProperty: " " }
+            : structuredClone(field)
+        ),
+        targetIdentity: [" "],
+      },
+      {
+        ...structuredClone(sourceMapping),
+        fieldMappings: sourceMapping.fieldMappings!.map((field) =>
+          field.targetProperty === displayNameField.targetProperty
+            ? { ...field, authorityDomain: " " }
+            : structuredClone(field)
+        ),
+      },
+      {
+        ...structuredClone(sourceMapping),
+        fieldMappings: sourceMapping.fieldMappings!.map((field) =>
+          field.targetProperty === displayNameField.targetProperty
+            ? { ...field, targetProperty: "Not A Namespaced Id" }
+            : structuredClone(field)
+        ),
+      },
+      {
+        ...structuredClone(sourceMapping),
+        fieldMappings: sourceMapping.fieldMappings!.map((field) =>
+          field.targetProperty === displayNameField.targetProperty
+            ? { ...field, normalizations: ["trim", "trim"] }
+            : structuredClone(field)
+        ),
+      },
+    ] as OntologyPackSourceMapping[];
+
+    for (const mapping of mappings) {
+      const result = executeSourceMapping({ mapping, envelope: envelope() });
+
+      expect(result.receipt).toMatchObject({
+        status: "rejected",
+        humanReviewRequired: true,
+      });
+      expect(result.receipt.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "invalid_source_field_mapping",
+            severity: "error",
+          }),
+        ])
+      );
+    }
+  });
+
+  it("rejects missing or blank executable mapping metadata", () => {
+    const invalidMappings = [
+      { ...structuredClone(sourceMapping), id: undefined },
+      { ...structuredClone(sourceMapping), object: " " },
+      { ...structuredClone(sourceMapping), sourceType: " " },
+      { ...structuredClone(sourceMapping), sourceLocator: " " },
+      { ...structuredClone(sourceMapping), authority: " " },
+      { ...structuredClone(sourceMapping), reviewStatus: " " },
+      { ...structuredClone(sourceMapping), mappingVersion: " " },
+      { ...structuredClone(sourceMapping), sourceSchemaVersion: " " },
+    ] as unknown as OntologyPackSourceMapping[];
+
+    for (const mapping of invalidMappings) {
+      const result = executeSourceMapping({ mapping, envelope: envelope() });
+
+      expect(result.receipt.status).toBe("rejected");
+      expect(result.receipt.humanReviewRequired).toBe(true);
+      expect(
+        result.receipt.issues.some((item) => item.severity === "error")
+      ).toBe(true);
+    }
+  });
+
   it("rejects null and blank canonical identity values after normalization", () => {
     for (const invalidIdentity of [null, "", "   "] as const) {
       const payload = { ...sourcePayload, externalId: invalidIdentity };
@@ -2235,6 +2319,50 @@ describe("entity resolution", () => {
       invalidRuleCount: 1,
     });
     expect(decision.rationale).toContain("rule is invalid");
+  });
+
+  it("rejects duplicate rule identifiers without amplifying their evidence", () => {
+    const input = {
+      sourceEntityKey: "source:duplicate-rules",
+      identifiers: {
+        beneficiary_id: "AB-123",
+        birth_date: "1980-01-02",
+      },
+      candidates: [
+        {
+          entityKey: "canonical:duplicate-rules",
+          identifiers: {
+            beneficiary_id: "AB-123",
+            birth_date: "different",
+          },
+        },
+      ],
+      rules: [
+        { identifier: "beneficiary_id", weight: 0.4 },
+        { identifier: "beneficiary_id", weight: 0.4 },
+        { identifier: "birth_date", weight: 0.6 },
+      ],
+    };
+
+    const decision = resolveEntityCandidates(input);
+    const reordered = resolveEntityCandidates({
+      ...input,
+      rules: [...input.rules].reverse(),
+    });
+
+    expect(decision).toEqual(reordered);
+    expect(decision).toMatchObject({
+      status: "new_entity",
+      targetEntityKey: null,
+      humanReviewRequired: true,
+      invalidRuleCount: 2,
+    });
+    expect(decision.candidates[0]).toMatchObject({
+      score: 0,
+      matchedIdentifiers: [],
+      mismatchedIdentifiers: ["birth_date"],
+    });
+    expect(decision.rationale).toContain("invalid");
   });
 
   it("never selects blank source or candidate entity keys automatically", () => {

@@ -5,6 +5,7 @@ const ALLOWED_INPUT_KEYS = new Set([
   "actorType",
   "attestation",
   "decision",
+  "entityDecisionHash",
   "entitySelection",
   "proposalHash",
   "rationale",
@@ -58,23 +59,30 @@ function validateSelections(input, proposal) {
     }
   }
 
-  if (input.decision === "approve_proposal") {
-    for (const field of reviewFields) {
-      const selectedHash = selections[field.propertyRef];
-      if (typeof selectedHash !== "string") {
+  for (const field of reviewFields) {
+    const selectionSupplied = Object.hasOwn(
+      selections,
+      field.propertyRef
+    );
+    if (!selectionSupplied) {
+      if (input.decision === "approve_proposal") {
         throw new ReviewInputError(
           `Select one candidate for ${field.propertyRef} before approval.`
         );
       }
-      if (
-        !field.candidates.some(
-          (candidate) => candidate.valueHash === selectedHash
-        )
-      ) {
-        throw new ReviewInputError(
-          `The selected candidate for ${field.propertyRef} is not in this proposal.`
-        );
-      }
+      continue;
+    }
+
+    const selectedHash = selections[field.propertyRef];
+    if (
+      typeof selectedHash !== "string" ||
+      !field.candidates.some(
+        (candidate) => candidate.valueHash === selectedHash
+      )
+    ) {
+      throw new ReviewInputError(
+        `The selected candidate for ${field.propertyRef} is not in this proposal.`
+      );
     }
   }
 
@@ -112,6 +120,20 @@ export class InMemoryReviewStore {
     if (input.proposalHash !== this.#proposal.proposalHash) {
       throw new ReviewInputError(
         "The proposal changed. Refresh before recording a disposition.",
+        409
+      );
+    }
+    if (
+      typeof input.entityDecisionHash !== "string" ||
+      input.entityDecisionHash.trim().length === 0
+    ) {
+      throw new ReviewInputError(
+        "The entity decision hash is required before recording a disposition."
+      );
+    }
+    if (input.entityDecisionHash !== this.#entityResolution.decisionHash) {
+      throw new ReviewInputError(
+        "The entity decision changed. Refresh before recording a disposition.",
         409
       );
     }
@@ -169,6 +191,7 @@ export class InMemoryReviewStore {
     const recordBody = {
       sequence,
       proposalHash: this.#proposal.proposalHash,
+      entityDecisionHash: this.#entityResolution.decisionHash,
       decision: input.decision,
       actorType: "human",
       reviewerRole: input.reviewerRole,

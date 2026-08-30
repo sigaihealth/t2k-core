@@ -73,8 +73,26 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid var(--gold);
+  outline: 3px solid #9b5a00;
   outline-offset: 3px;
+}
+
+.hero :focus-visible,
+.section-dark :focus-visible {
+  outline-color: #f4ca64;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .hero {
@@ -669,6 +687,16 @@ h3 {
 
 .inspection-details details {
   border-bottom: 1px solid var(--line);
+}
+
+.compact-inspection,
+.governance-inspection {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.governance-inspection pre {
+  overflow-wrap: anywhere;
 }
 
 .inspection-details summary {
@@ -1303,6 +1331,40 @@ textarea {
   font-size: 0.68rem;
 }
 
+.log-selections {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.log-selections div {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.log-selections dt {
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.log-selections dd {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.log-selections code {
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+}
+
 footer {
   display: flex;
   gap: 30px;
@@ -1392,6 +1454,10 @@ footer p {
   .metric-strip,
   footer {
     width: min(100% - 26px, 1180px);
+  }
+
+  .section-dark {
+    width: 100%;
   }
 
   .topbar-links a:not(.nav-action) {

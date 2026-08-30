@@ -62,7 +62,7 @@
       </div>
     </header>
 
-    <main id="main-content">
+    <main id="main-content" tabindex="-1">
       <section class="metric-strip" aria-label="Demo summary" id="metrics">
         <p class="loading-message">Executing @t2kai/core against the synthetic records…</p>
       </section>
@@ -112,7 +112,8 @@
           </p>
         </div>
         <div class="source-selector" id="source-selector" aria-label="Agency sources"></div>
-        <article class="source-detail" id="source-detail" aria-live="polite"></article>
+        <p class="visually-hidden" id="source-status" aria-live="polite"></p>
+        <article class="source-detail" id="source-detail"></article>
       </section>
 
       <section class="section" id="proposal" aria-labelledby="proposal-heading">
@@ -167,8 +168,8 @@
             <p class="eyebrow">Order-invariance check</p>
             <h2 id="determinism-heading">Same evidence. Same proposal.</h2>
             <p>
-              The server reconciles the three agency results in original,
-              reversed, and rotated order. Every run must yield the same hash.
+              The server reconciles all six input permutations for the three
+              agency results. Every run must yield the same hash.
             </p>
           </div>
           <div class="hash-checks" id="hash-checks"></div>

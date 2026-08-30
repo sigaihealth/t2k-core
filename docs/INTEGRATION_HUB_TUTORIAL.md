@@ -1,4 +1,4 @@
-# Build and Test a Governed Integration Hub with T2K 0.4.1
+# Build and Test a Governed Integration Hub with T2K 0.4.2
 
 This tutorial offers two runnable paths. The generated profile is the smallest
 way to inspect a complete evidence packet. The repository demo adds a browser
@@ -44,7 +44,7 @@ of being flattened into a monolithic record.
 Node.js 20.10 or newer is required.
 
 ```bash
-npx create-t2k@0.4.1 my-integration-hub --profile integration-hub
+npx create-t2k@0.4.2 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -153,11 +153,14 @@ precomputed output:
 - `evaluatePurposeLimitedAccess` for an explicit allow and a default deny.
 
 In the browser, compare all three raw sources, expand their mapping receipts,
-trace conflicted candidates, inspect the input-order check, review the ambiguous
-entity link, and compare the two access receipts. You can submit an attested
-human disposition to an in-memory session log. Refreshing or restarting does
-not activate the canonical proposal, merge either entity, or turn the access
-receipt into a token.
+trace conflicted candidates, and verify the proposal hash across all six input
+permutations. Inspect the complete reconciliation, entity-resolution, policy,
+and access inputs and receipts before reviewing the ambiguous entity link. An
+attested human disposition is bound to the current reconciliation and entity
+decision hashes, and every supplied selection is checked against those current
+proposals before it enters the in-memory session log. Refreshing or restarting
+does not activate the canonical proposal, merge either entity, or turn the
+access receipt into a token.
 
 The focused tests exercise the model and HTTP boundary. The isolated smoke
 packs `@t2kai/core`, installs that tarball into a clean temporary consumer, and

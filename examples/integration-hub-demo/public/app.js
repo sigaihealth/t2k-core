@@ -141,6 +141,9 @@ function renderSources(model) {
       button.setAttribute("aria-pressed", String(buttonIndex === index))
     );
     detail.replaceChildren(...sourceDetail(model.agencies[index]));
+    byId("source-status").textContent =
+      `${model.agencies[index].agency.label} source selected. ` +
+      "The source evidence panel has been updated.";
   };
 
   model.agencies.forEach((source, index) => {
@@ -209,7 +212,10 @@ function renderProposal(model) {
       className: "hash-line",
       text: `proposal ${shortHash(model.proposal.proposalHash, 16)}`,
       attributes: { title: model.proposal.proposalHash },
-    })
+    }),
+    make("div", { className: "inspection-details compact-inspection" }, [
+      inspectionDetails("Inspect the complete proposal", model.proposal),
+    ])
   );
 
   const grid = byId("field-grid");
@@ -272,7 +278,11 @@ function renderEntityResolution(model) {
       text: `${deterministicAcrossInputOrder ? "✓ deterministic" : "✕ changed"} · reversible ${decision.reversible ? "yes" : "no"} · ${shortHash(decision.decisionHash, 14)}`,
       attributes: { title: decision.decisionHash },
     }),
-    make("p", { className: "governance-boundary", text: boundary })
+    make("p", { className: "governance-boundary", text: boundary }),
+    make("div", { className: "inspection-details governance-inspection" }, [
+      inspectionDetails("Entity-resolution input", model.entityResolution.input),
+      inspectionDetails("Complete decision receipt", decision),
+    ])
   );
 }
 
@@ -294,10 +304,17 @@ function renderPurposeAccess(model) {
           text: `receipt ${shortHash(receipt.receiptHash, 16)}`,
           attributes: { title: receipt.receiptHash },
         }),
+        make("div", { className: "inspection-details governance-inspection" }, [
+          inspectionDetails("Policy-evaluation input", check.request),
+          inspectionDetails("Complete access receipt", receipt),
+        ]),
       ])
     );
   }
   container.append(
+    make("div", { className: "inspection-details governance-inspection" }, [
+      inspectionDetails("Versioned purpose-access policy", model.purposeAccess.policy),
+    ]),
     make("p", {
       className: "governance-boundary",
       text: model.purposeAccess.boundary,
@@ -430,7 +447,62 @@ function entityReviewField(model) {
   return fieldset;
 }
 
-function renderReviewLog(reviewLog) {
+function renderRecordedSelections(record, model) {
+  const selections = make("dl", { className: "log-selections" });
+  const canonicalSelections = Object.entries(record.selections);
+  selections.append(
+    make("div", {}, [
+      make("dt", { text: "Canonical proposal hash" }),
+      make("dd", {}, [make("code", { text: record.proposalHash })]),
+    ]),
+    make("div", {}, [
+      make("dt", { text: "Entity-decision hash" }),
+      make("dd", {}, [make("code", { text: record.entityDecisionHash })]),
+    ])
+  );
+  for (const [propertyRef, valueHash] of canonicalSelections) {
+    const field = model.proposal.fields.find(
+      (candidate) => candidate.propertyRef === propertyRef
+    );
+    const candidate = field?.candidates.find(
+      (item) => item.valueHash === valueHash
+    );
+    selections.append(
+      make("div", {}, [
+        make("dt", { text: `Canonical ${labelFor(propertyRef)}` }),
+        make("dd", {}, [
+          make("span", {
+            text: candidate ? displayValue(candidate.value) : "Unknown candidate",
+          }),
+          make("code", { text: valueHash }),
+        ]),
+      ])
+    );
+  }
+  if (record.entitySelection) {
+    selections.append(
+      make("div", {}, [
+        make("dt", { text: "Entity-link outcome" }),
+        make("dd", {}, [
+          make("span", { text: labelFor(record.entitySelection) }),
+        ]),
+      ])
+    );
+  }
+  if (canonicalSelections.length === 0 && !record.entitySelection) {
+    selections.append(
+      make("div", {}, [
+        make("dt", { text: "Candidate selections" }),
+        make("dd", {}, [
+          make("span", { text: "No canonical or entity selection recorded" }),
+        ]),
+      ])
+    );
+  }
+  return selections;
+}
+
+function renderReviewLog(reviewLog, model) {
   const container = byId("review-log-records");
   clear(container);
   if (reviewLog.records.length === 0) {
@@ -452,9 +524,10 @@ function renderReviewLog(reviewLog) {
             text: `${record.reviewer} · ${labelFor(record.decision)}`,
           }),
           make("p", { text: record.rationale }),
+          renderRecordedSelections(record, model),
           make("span", {
             className: "log-meta",
-            text: `${new Date(record.recordedAt).toLocaleString()} · ${labelFor(record.storage)} · not activated · ${shortHash(record.dispositionHash, 12)}`,
+            text: `${new Date(record.recordedAt).toLocaleString()} · ${labelFor(record.storage)} · ${labelFor(record.activationStatus)} · ${labelFor(record.entityLinkStatus)} · disposition ${shortHash(record.dispositionHash, 12)}`,
           }),
         ]),
       ])
@@ -466,7 +539,7 @@ function renderReviewLog(reviewLog) {
 function renderReview(model) {
   const fields = byId("review-fields");
   fields.append(canonicalReviewFields(model), entityReviewField(model));
-  renderReviewLog(model.reviewLog);
+  renderReviewLog(model.reviewLog, model);
 
   const form = byId("review-form");
   const decision = byId("decision");
@@ -496,6 +569,7 @@ function renderReview(model) {
     )?.value;
     const payload = {
       proposalHash: model.proposal.proposalHash,
+      entityDecisionHash: model.entityResolution.decision.decisionHash,
       decision: decision.value,
       actorType: "human",
       reviewerRole: model.humanReview.requiredRole,
@@ -517,7 +591,7 @@ function renderReview(model) {
       status.className = "form-status success";
       status.textContent =
         "Disposition recorded in memory. Proposal, entity links, and activation remain unchanged.";
-      renderReviewLog(result.reviewLog);
+      renderReviewLog(result.reviewLog, model);
       form.reset();
       updateRequiredChoices();
     } catch (error) {

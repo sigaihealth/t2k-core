@@ -279,10 +279,11 @@ export function parseReferencePolicySpecification(
 function valueAtPath(value: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((current, segment) => {
     if (Array.isArray(current) && /^\d+$/.test(segment)) {
-      return current[Number(segment)];
+      const index = Number(segment);
+      return Object.hasOwn(current, index) ? current[index] : undefined;
     }
     if (isObject(current)) {
-      return current[segment];
+      return Object.hasOwn(current, segment) ? current[segment] : undefined;
     }
     return undefined;
   }, value);

@@ -6,6 +6,42 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-30
+
+### Fixed
+
+- Purpose-limited access rejects unknown rule keys, and reference policy paths
+  read only own object and array properties, so misspelled controls or inherited
+  prototype values cannot authorize a request or satisfy a rule.
+- Executable source mappings now apply schema-aligned validation to identity,
+  mapping metadata, and field definitions, including trimmed nonblank values,
+  safe namespaced targets, and unique normalization steps. Duplicate
+  entity-resolution rule identifiers are invalid instead of contributing the
+  same evidence more than once.
+- Reward assessments bind the exact observation set and episode closure rejects
+  an assessment made stale by a later observation.
+- Integration-hub review records bind both current decision hashes and validate
+  every supplied candidate selection, including return-for-correction paths.
+
+### Changed
+
+- The three-source demo verifies all six input permutations, exposes complete
+  reconciliation, entity-resolution, policy, access, and recorded-review
+  evidence, improves keyboard and screen-reader behavior, and hardens its local
+  HTTP boundary with loopback Host/Origin checks and route-specific methods.
+- Postgres lifecycle snapshots now read table rows, reward aggregates, and the
+  verified event chain through one read-only repeatable-read transaction, so a
+  snapshot cannot combine different committed database states.
+- Core publication now fails closed unless a GitHub-verified annotated tag is
+  bound to the checked-out commit and that commit is on the fetched `main`
+  history.
+
+### Compatibility
+
+- `@t2kai/core@0.4.2` and `create-t2k@0.4.2` remain patch-compatible for
+  well-formed 0.4 callers and generated projects. `@t2kai/mcp@0.3.0` remains
+  unchanged and continues to resolve the compatible core range.
+
 ## [0.4.1] - 2026-08-30
 
 ### Added

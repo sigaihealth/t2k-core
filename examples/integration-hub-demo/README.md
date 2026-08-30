@@ -39,8 +39,8 @@ Node's standard library.
 3. **Review the conflicts.** The display name stays unresolved, both mailing
    addresses remain preserved, and explicit authority policy proposes
    `eligible` and `employed` without declaring either accepted truth.
-4. **Check determinism.** The app reconciles source results in file, reverse,
-   and rotated order. All three proposal hashes must match.
+4. **Check determinism.** The app reconciles all six input permutations for the
+   three sources. Every proposal hash must match.
 5. **Inspect entity resolution.** Two canonical entities score equally. Core
    returns a deterministic, reversible `needs_review` link proposal instead of
    silently merging them.
@@ -115,7 +115,7 @@ The tests cover:
 - manifest validation and three mapped source receipts;
 - shared normalized identity and unmodified raw evidence;
 - `require_review`, `preserve_all`, and `prefer_authority` behavior;
-- proposal hash invariance across three input orders;
+- proposal hash invariance across all six input permutations;
 - ambiguous, reversible entity-link routing;
 - explicit allow and fail-closed/default-deny access receipts;
 - rejection of AI-authored, stale, incomplete, and invalid review inputs;

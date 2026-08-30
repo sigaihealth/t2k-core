@@ -11,6 +11,6 @@
     "check": "node src/run.mjs"
   },
   "dependencies": {
-    "@t2kai/core": "^0.4.1"
+    "@t2kai/core": "^0.4.2"
   }
 }
