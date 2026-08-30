@@ -15,6 +15,10 @@ rules in the versioned specification.
 - Reversible evidence-scored entity-link proposals and deterministic,
   purpose-limited access receipts with explicit-deny precedence and default
   deny.
+- Deterministic canonical-record reconciliation proposals that cross-check
+  receipt self-consistency, canonical output, field provenance, and identity;
+  preserve all candidate evidence; apply explicit versioned authority
+  priorities; and fail closed on mixed policies or contradictory evidence.
 - Positive legacy/structured and negative schema/compiler conformance fixtures,
   plus a fully synthetic public-benefits integration example.
 
@@ -31,6 +35,8 @@ rules in the versioned specification.
   unstable idempotency values, and nested source drift.
 - Production dependency locks were refreshed to versions with no reported npm
   audit findings at the time of this change.
+- Generated projects now preserve their Postgres volume on `db:down`; the
+  explicitly named `db:reset` command removes disposable lifecycle data.
 
 ### Compatibility
 

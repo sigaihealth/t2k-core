@@ -24,7 +24,8 @@ Options:
   -v, --version  Show the package version
 
 The default directory is my-t2k-project. Existing non-empty directories are
-never overwritten.`;
+never overwritten. Generated projects include decision and optional
+persisted-lifecycle examples.`;
 
 try {
   const options = parseArguments(process.argv.slice(2));

@@ -131,6 +131,70 @@ export interface ExecuteSourceMappingResult {
   receipt: SourceMappingReceipt;
 }
 
+export interface CanonicalAuthorityPolicy {
+  policyId: string;
+  policyVersion: string;
+  prioritiesByDomain: Record<string, readonly string[]>;
+}
+
+export interface ReconcileCanonicalRecordsInput {
+  results: readonly ExecuteSourceMappingResult[];
+  authorityPolicy: CanonicalAuthorityPolicy;
+}
+
+export interface CanonicalReconciliationIssue {
+  code: string;
+  severity: "error" | "review" | "warning";
+  message: string;
+  propertyRef: string | null;
+  receiptHash: string | null;
+}
+
+export interface CanonicalReconciliationEvidence {
+  receiptHash: string;
+  receiptAuthorityRef: string;
+  provenance: CanonicalFieldProvenance;
+}
+
+export interface CanonicalReconciliationCandidate {
+  value: JsonValue;
+  valueHash: string;
+  evidence: CanonicalReconciliationEvidence[];
+}
+
+export interface CanonicalReconciledField {
+  propertyRef: string;
+  conflictPolicy: OntologyPackSourceFieldMapping["conflictPolicy"] | null;
+  status: "selected" | "preserved" | "needs_review";
+  resolution:
+    | "single_value"
+    | "preserve_all"
+    | "preferred_authority"
+    | "unresolved";
+  selectedValue: JsonValue | null;
+  selectedValueHash: string | null;
+  candidates: CanonicalReconciliationCandidate[];
+}
+
+export interface CanonicalReconciliationProposal {
+  proposalVersion: "t2k.canonical-reconciliation-proposal.v1";
+  status: "proposed" | "needs_review" | "rejected";
+  objectRef: string;
+  identity: Record<string, JsonValue>;
+  fields: CanonicalReconciledField[];
+  policyId: string;
+  policyVersion: string;
+  policyHash: string;
+  inputReceiptHashes: string[];
+  includedReceiptHashes: string[];
+  inputHash: string;
+  issues: CanonicalReconciliationIssue[];
+  humanReviewRequired: boolean;
+  nonMutating: true;
+  alternativesPreserved: true;
+  proposalHash: string;
+}
+
 const SAFE_PATH = /^\$(?:\.[A-Za-z0-9_-]+)*$/;
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9_-]+$/;
 const UNSAFE_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
@@ -953,6 +1017,832 @@ export function executeSourceMapping(
       ...receiptWithoutHash,
       receiptHash: semanticHash(receiptWithoutHash),
     },
+  };
+}
+
+function reconciliationIssue(
+  code: string,
+  severity: CanonicalReconciliationIssue["severity"],
+  message: string,
+  propertyRef: string | null = null,
+  receiptHash: string | null = null
+): CanonicalReconciliationIssue {
+  return { code, severity, message, propertyRef, receiptHash };
+}
+
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+const RECONCILABLE_SOURCE_STATUSES = new Set<SourceMappingReceipt["status"]>([
+  "mapped",
+  "quarantined",
+  "rejected",
+  "duplicate",
+]);
+
+function isSerializableJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isSerializableJsonValue);
+  return (
+    isRecord(value) && Object.values(value).every(isSerializableJsonValue)
+  );
+}
+
+function isJsonObjectShape(value: unknown): value is JsonObject {
+  return (
+    isRecord(value) && Object.values(value).every(isSerializableJsonValue)
+  );
+}
+
+function isStringArrayShape(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isSourceIssueShape(value: unknown): value is SourceMappingIssue {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    ["error", "review", "warning"].includes(String(value.severity)) &&
+    typeof value.message === "string" &&
+    (value.sourcePath === null || typeof value.sourcePath === "string") &&
+    (value.targetProperty === null || typeof value.targetProperty === "string")
+  );
+}
+
+function isSourceReceiptShape(value: unknown): value is SourceMappingReceipt {
+  if (!isRecord(value)) return false;
+  const stringFields = [
+    "sourceSystem",
+    "sourceLocator",
+    "sourceRecordKey",
+    "sourceSchemaVersion",
+    "authorityRef",
+    "dataClassification",
+    "mappingId",
+    "mappingVersion",
+    "eventTime",
+    "observedTime",
+  ];
+  const hashFields = [
+    "mappingHash",
+    "sourcePayloadHash",
+    "canonicalOutputHash",
+    "idempotencyKey",
+    "receiptHash",
+  ];
+  return (
+    value.receiptVersion === "t2k.source-mapping-receipt.v1" &&
+    RECONCILABLE_SOURCE_STATUSES.has(
+      value.status as SourceMappingReceipt["status"]
+    ) &&
+    stringFields.every((field) => typeof value[field] === "string") &&
+    hashFields.every(
+      (field) =>
+        typeof value[field] === "string" && SHA256_HEX.test(value[field])
+    ) &&
+    SOURCE_AUTHENTICATION_STATES.includes(
+      value.authenticationState as SourceAuthenticationState
+    ) &&
+    isStringArrayShape(value.purposeTags) &&
+    isJsonObjectShape(value.retentionPolicy) &&
+    typeof value.lateArrival === "boolean" &&
+    typeof value.duplicate === "boolean" &&
+    typeof value.humanReviewRequired === "boolean" &&
+    DRIFT_POLICIES.has(
+      value.driftPolicy as NonNullable<OntologyPackSourceMapping["driftPolicy"]>
+    ) &&
+    LATE_ARRIVAL_POLICIES.has(
+      value.lateArrivalPolicy as NonNullable<
+        OntologyPackSourceMapping["lateArrivalPolicy"]
+      >
+    ) &&
+    Array.isArray(value.issues) &&
+    value.issues.every(isSourceIssueShape)
+  );
+}
+
+function isCanonicalProvenanceShape(
+  value: unknown
+): value is CanonicalFieldProvenance {
+  if (!isRecord(value)) return false;
+  const stringFields = [
+    "sourceSystem",
+    "sourceLocator",
+    "sourceRecordKey",
+    "sourceSchemaVersion",
+    "sourcePath",
+    "mappingId",
+    "eventTime",
+    "observedTime",
+    "authorityRef",
+    "authorityDomain",
+    "dataClassification",
+  ];
+  return (
+    stringFields.every((field) => typeof value[field] === "string") &&
+    ["sourceValueHash", "sourcePayloadHash", "mappingHash"].every(
+      (field) =>
+        typeof value[field] === "string" && SHA256_HEX.test(value[field])
+    ) &&
+    SOURCE_AUTHENTICATION_STATES.includes(
+      value.authenticationState as SourceAuthenticationState
+    ) &&
+    isStringArrayShape(value.purposeTags) &&
+    isJsonObjectShape(value.retentionPolicy)
+  );
+}
+
+function isCanonicalFieldShape(value: unknown): value is CanonicalFieldValue {
+  return (
+    isRecord(value) &&
+    typeof value.propertyRef === "string" &&
+    value.propertyRef.trim().length > 0 &&
+    isSerializableJsonValue(value.value) &&
+    CONFLICT_POLICIES.has(
+      value.conflictPolicy as OntologyPackSourceFieldMapping["conflictPolicy"]
+    ) &&
+    isCanonicalProvenanceShape(value.provenance)
+  );
+}
+
+function isCanonicalRecordShape(value: unknown): value is FederatedCanonicalRecord {
+  return (
+    isRecord(value) &&
+    typeof value.objectRef === "string" &&
+    isRecord(value.identity) &&
+    Object.keys(value.identity).every((key) => key.trim().length > 0) &&
+    Object.values(value.identity).every(isSerializableJsonValue) &&
+    Array.isArray(value.fields) &&
+    value.fields.every(isCanonicalFieldShape)
+  );
+}
+
+function sortedSemanticStrings(values: readonly string[]) {
+  return [...values].sort(compareCanonicalStrings);
+}
+
+function provenanceMatchesReceipt(
+  provenance: CanonicalFieldProvenance,
+  receipt: SourceMappingReceipt
+) {
+  return (
+    provenance.sourceSystem === receipt.sourceSystem &&
+    provenance.sourceLocator === receipt.sourceLocator &&
+    provenance.sourceRecordKey === receipt.sourceRecordKey &&
+    provenance.sourceSchemaVersion === receipt.sourceSchemaVersion &&
+    provenance.sourcePayloadHash === receipt.sourcePayloadHash &&
+    provenance.mappingId === receipt.mappingId &&
+    provenance.mappingHash === receipt.mappingHash &&
+    provenance.eventTime === receipt.eventTime &&
+    provenance.observedTime === receipt.observedTime &&
+    provenance.authenticationState === receipt.authenticationState &&
+    provenance.authorityRef === receipt.authorityRef &&
+    provenance.dataClassification === receipt.dataClassification &&
+    semanticHash(sortedSemanticStrings(provenance.purposeTags)) ===
+      semanticHash(sortedSemanticStrings(receipt.purposeTags)) &&
+    semanticHash(provenance.retentionPolicy) ===
+      semanticHash(receipt.retentionPolicy)
+  );
+}
+
+function unknownReceiptHash(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.receipt)) return null;
+  return typeof value.receipt.receiptHash === "string"
+    ? value.receipt.receiptHash
+    : null;
+}
+
+/**
+ * Produces a deterministic, non-mutating proposal from mapped source evidence.
+ * It never mutates its inputs, promotes a value to accepted truth, or infers
+ * authority from source order, authentication state, or event recency.
+ */
+export function reconcileCanonicalRecords(
+  input: ReconcileCanonicalRecordsInput
+): CanonicalReconciliationProposal {
+  const issues: CanonicalReconciliationIssue[] = [];
+  const rawInput: unknown = input;
+  const inputRecord = isRecord(rawInput) ? rawInput : {};
+  if (!isRecord(rawInput)) {
+    issues.push(
+      reconciliationIssue(
+        "malformed_reconciliation_input",
+        "error",
+        "Reconciliation input must be a serialized object."
+      )
+    );
+  }
+  const rawPolicy = inputRecord.authorityPolicy;
+  const policyRecord = isRecord(rawPolicy) ? rawPolicy : {};
+  const policyId =
+    typeof policyRecord.policyId === "string"
+      ? policyRecord.policyId
+      : "";
+  const policyVersion =
+    typeof policyRecord.policyVersion === "string"
+      ? policyRecord.policyVersion
+      : "";
+  const rawPriorities = policyRecord.prioritiesByDomain;
+  const policyHash = semanticHash(rawPolicy);
+  const prioritiesByDomain = new Map<string, string[]>();
+
+  if (!policyId.trim() || !policyVersion.trim() || !isRecord(rawPriorities)) {
+    issues.push(
+      reconciliationIssue(
+        "invalid_authority_policy",
+        "error",
+        "Reconciliation requires a nonblank policy ID, policy version, and priorities-by-domain object."
+      )
+    );
+  } else {
+    for (const [domain, priorities] of Object.entries(rawPriorities).sort(
+      ([left], [right]) => compareCanonicalStrings(left, right)
+    )) {
+      const validPriorities =
+        domain.trim().length > 0 &&
+        Array.isArray(priorities) &&
+        priorities.length > 0 &&
+        priorities.every(
+          (authorityRef) =>
+            typeof authorityRef === "string" && authorityRef.trim().length > 0
+        ) &&
+        new Set(priorities).size === priorities.length;
+      if (!validPriorities) {
+        issues.push(
+          reconciliationIssue(
+            "invalid_authority_priority",
+            "error",
+            `Authority priorities for ${domain || "<missing>"} must be a nonempty list of unique, nonblank authority references.`
+          )
+        );
+      } else {
+        prioritiesByDomain.set(domain, [...priorities] as string[]);
+      }
+    }
+  }
+
+  const rawResults = inputRecord.results;
+  if (!Array.isArray(rawResults)) {
+    issues.push(
+      reconciliationIssue(
+        "malformed_reconciliation_results",
+        "error",
+        "Reconciliation results must be a serialized array."
+      )
+    );
+  }
+  const normalizedResults = (Array.isArray(rawResults) ? [...rawResults] : []).sort(
+    (left, right) =>
+      compareCanonicalStrings(
+        unknownReceiptHash(left) ?? "",
+        unknownReceiptHash(right) ?? ""
+      ) || compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
+  );
+  const inputHash = semanticHash(
+    Array.isArray(rawResults) ? normalizedResults : rawResults
+  );
+  const inputReceiptHashes = normalizedResults
+    .map((result) => unknownReceiptHash(result) ?? "")
+    .sort(compareCanonicalStrings);
+  const includedResults: ExecuteSourceMappingResult[] = [];
+  const includedReceiptHashes = new Set<string>();
+
+  for (const rawResult of normalizedResults) {
+    const candidateReceiptHash = unknownReceiptHash(rawResult);
+    if (!isRecord(rawResult)) {
+      issues.push(
+        reconciliationIssue(
+          "malformed_source_result",
+          "error",
+          "Each reconciliation result must be a serialized object.",
+          null,
+          candidateReceiptHash
+        )
+      );
+      continue;
+    }
+    if (!isSourceReceiptShape(rawResult.receipt)) {
+      issues.push(
+        reconciliationIssue(
+          "malformed_source_receipt",
+          "error",
+          "A reconciliation result contains a malformed source receipt.",
+          null,
+          candidateReceiptHash
+        )
+      );
+      continue;
+    }
+    if (!isCanonicalRecordShape(rawResult.canonicalRecord)) {
+      issues.push(
+        reconciliationIssue(
+          "malformed_canonical_record",
+          "error",
+          "A reconciliation result contains a malformed canonical record or field.",
+          null,
+          candidateReceiptHash
+        )
+      );
+      continue;
+    }
+    const result: ExecuteSourceMappingResult = {
+      receipt: rawResult.receipt,
+      canonicalRecord: rawResult.canonicalRecord,
+    };
+    const { receiptHash, ...receiptWithoutHash } = result.receipt;
+    if (semanticHash(receiptWithoutHash) !== receiptHash) {
+      issues.push(
+        reconciliationIssue(
+          "invalid_source_receipt_hash",
+          "error",
+          "A source receipt hash does not match its receipt body; the input is excluded.",
+          null,
+          receiptHash
+        )
+      );
+      continue;
+    }
+    if (
+      semanticHash(result.canonicalRecord) !== result.receipt.canonicalOutputHash
+    ) {
+      issues.push(
+        reconciliationIssue(
+          "invalid_canonical_output_hash",
+          "error",
+          "A canonical record does not match the output hash in its source receipt; the input is excluded.",
+          null,
+          receiptHash
+        )
+      );
+      continue;
+    }
+    const provenanceMismatches = result.canonicalRecord.fields
+      .filter(
+        (field) => !provenanceMatchesReceipt(field.provenance, result.receipt)
+      )
+      .sort(
+        (left, right) =>
+          compareCanonicalStrings(left.propertyRef, right.propertyRef) ||
+          compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
+      );
+    if (provenanceMismatches.length > 0) {
+      for (const field of provenanceMismatches) {
+        issues.push(
+          reconciliationIssue(
+            "source_field_provenance_mismatch",
+            "error",
+            `Field provenance for ${field.propertyRef} does not match its enclosing source receipt.`,
+            field.propertyRef,
+            receiptHash
+          )
+        );
+      }
+      continue;
+    }
+    if (result.receipt.status === "duplicate") {
+      issues.push(
+        reconciliationIssue(
+          "duplicate_source_evidence_excluded",
+          "warning",
+          "Exact duplicate source evidence is excluded from the reconciliation proposal.",
+          null,
+          receiptHash
+        )
+      );
+      continue;
+    }
+    if (result.receipt.status !== "mapped") {
+      issues.push(
+        reconciliationIssue(
+          "unaccepted_source_evidence_excluded",
+          "review",
+          `Source evidence with status ${result.receipt.status} cannot win reconciliation and is excluded.`,
+          null,
+          receiptHash
+        )
+      );
+      continue;
+    }
+    const identityEntries = Object.entries(result.canonicalRecord.identity).sort(
+      ([left], [right]) => compareCanonicalStrings(left, right)
+    );
+    let identityContractValid = true;
+    const fieldCounts = new Map<string, number>();
+    for (const field of result.canonicalRecord.fields) {
+      fieldCounts.set(
+        field.propertyRef,
+        (fieldCounts.get(field.propertyRef) ?? 0) + 1
+      );
+    }
+    for (const [propertyRef, count] of [...fieldCounts.entries()].sort(
+      ([left], [right]) => compareCanonicalStrings(left, right)
+    )) {
+      if (count <= 1) continue;
+      identityContractValid = false;
+      issues.push(
+        reconciliationIssue(
+          "duplicate_canonical_field",
+          "error",
+          `Canonical property ${propertyRef} appears more than once in one source result.`,
+          propertyRef,
+          receiptHash
+        )
+      );
+    }
+    if (
+      identityEntries.length === 0 ||
+      identityEntries.some(([, value]) => !isUsableIdentifier(value))
+    ) {
+      identityContractValid = false;
+      issues.push(
+        reconciliationIssue(
+          "invalid_canonical_identity",
+          "error",
+          "Mapped source evidence must contain nonblank string or finite-number canonical identity values.",
+          null,
+          receiptHash
+        )
+      );
+    }
+    for (const [propertyRef, identityValue] of identityEntries) {
+      const identityFields = result.canonicalRecord.fields.filter(
+        (field) => field.propertyRef === propertyRef
+      );
+      if (identityFields.length === 0) {
+        identityContractValid = false;
+        issues.push(
+          reconciliationIssue(
+            "missing_canonical_identity_field",
+            "error",
+            `Canonical identity ${propertyRef} has no corresponding field evidence.`,
+            propertyRef,
+            receiptHash
+          )
+        );
+      } else if (identityFields.length > 1) {
+        identityContractValid = false;
+        issues.push(
+          reconciliationIssue(
+            "duplicate_canonical_identity_field",
+            "error",
+            `Canonical identity ${propertyRef} has more than one corresponding field.`,
+            propertyRef,
+            receiptHash
+          )
+        );
+      } else if (
+        canonicalJson(identityFields[0].value) !== canonicalJson(identityValue)
+      ) {
+        identityContractValid = false;
+        issues.push(
+          reconciliationIssue(
+            "contradictory_canonical_identity_field",
+            "error",
+            `Canonical identity ${propertyRef} contradicts its corresponding field value.`,
+            propertyRef,
+            receiptHash
+          )
+        );
+      }
+    }
+    if (!identityContractValid) continue;
+    if (includedReceiptHashes.has(receiptHash)) {
+      issues.push(
+        reconciliationIssue(
+          "repeated_input_receipt_excluded",
+          "warning",
+          "The same mapped receipt was supplied more than once; repeated evidence is excluded.",
+          null,
+          receiptHash
+        )
+      );
+      continue;
+    }
+    includedReceiptHashes.add(receiptHash);
+    includedResults.push(result);
+    if (result.receipt.humanReviewRequired) {
+      issues.push(
+        reconciliationIssue(
+          "mapped_source_evidence_requires_review",
+          "review",
+          "Mapped source evidence retains an upstream human-review obligation.",
+          null,
+          receiptHash
+        )
+      );
+    }
+  }
+
+  let objectRef = includedResults[0]?.canonicalRecord.objectRef ?? "";
+  let identity: Record<string, JsonValue> = includedResults[0]
+    ? cloneJson(includedResults[0].canonicalRecord.identity)
+    : {};
+  let objectMismatch = false;
+  let identityMismatch = false;
+
+  if (includedResults.length === 0) {
+    issues.push(
+      reconciliationIssue(
+        "no_mapped_source_evidence",
+        "error",
+        "At least one verified mapped source result is required for reconciliation."
+      )
+    );
+  } else {
+    if (!objectRef.trim()) {
+      issues.push(
+        reconciliationIssue(
+          "invalid_canonical_object",
+          "error",
+          "Mapped source evidence must identify a nonblank canonical object."
+        )
+      );
+    }
+    if (Object.keys(identity).length === 0) {
+      issues.push(
+        reconciliationIssue(
+          "invalid_canonical_identity",
+          "error",
+          "Mapped source evidence must contain a canonical identity."
+        )
+      );
+    }
+    const identityJson = canonicalJson(identity);
+    for (const result of includedResults.slice(1)) {
+      if (result.canonicalRecord.objectRef !== objectRef) {
+        objectMismatch = true;
+        issues.push(
+          reconciliationIssue(
+            "canonical_object_mismatch",
+            "error",
+            "Mapped source evidence targets different canonical objects and cannot be reconciled together.",
+            null,
+            result.receipt.receiptHash
+          )
+        );
+      }
+      if (canonicalJson(result.canonicalRecord.identity) !== identityJson) {
+        identityMismatch = true;
+        issues.push(
+          reconciliationIssue(
+            "canonical_identity_mismatch",
+            "error",
+            "Mapped source evidence has different canonical identities and cannot be reconciled without an accepted entity-link decision.",
+            null,
+            result.receipt.receiptHash
+          )
+        );
+      }
+    }
+  }
+
+  if (objectMismatch) objectRef = "";
+  if (identityMismatch) identity = {};
+
+  const fieldsByProperty = new Map<
+    string,
+    Array<{
+      field: CanonicalFieldValue;
+      receiptHash: string;
+      authorityRef: string;
+    }>
+  >();
+  for (const result of includedResults) {
+    for (const field of result.canonicalRecord.fields) {
+      const entries = fieldsByProperty.get(field.propertyRef) ?? [];
+      entries.push({
+        field,
+        receiptHash: result.receipt.receiptHash,
+        authorityRef: result.receipt.authorityRef,
+      });
+      fieldsByProperty.set(field.propertyRef, entries);
+    }
+  }
+
+  let fields: CanonicalReconciledField[] = [...fieldsByProperty.entries()]
+    .sort(([left], [right]) => compareCanonicalStrings(left, right))
+    .map(([propertyRef, entries]) => {
+      const policies = [...new Set(entries.map(({ field }) => field.conflictPolicy))]
+        .sort(compareCanonicalStrings);
+      const conflictPolicy = policies.length === 1 ? policies[0] : null;
+      if (policies.length !== 1) {
+        issues.push(
+          reconciliationIssue(
+            "mixed_field_conflict_policies",
+            "error",
+            `Canonical property ${propertyRef} has incompatible conflict policies.`,
+            propertyRef
+          )
+        );
+      }
+
+      const candidatesByValue = new Map<
+        string,
+        {
+          value: JsonValue;
+          valueHash: string;
+          evidence: Map<string, CanonicalReconciliationEvidence>;
+        }
+      >();
+      for (const {
+        field,
+        receiptHash,
+        authorityRef,
+      } of entries) {
+        const valueKey = canonicalJson(field.value);
+        const candidate = candidatesByValue.get(valueKey) ?? {
+          value: cloneJson(field.value),
+          valueHash: semanticHash(field.value),
+          evidence: new Map<string, CanonicalReconciliationEvidence>(),
+        };
+        const evidence: CanonicalReconciliationEvidence = {
+          receiptHash,
+          receiptAuthorityRef: authorityRef,
+          provenance: structuredClone(field.provenance),
+        };
+        candidate.evidence.set(canonicalJson(evidence), evidence);
+        candidatesByValue.set(valueKey, candidate);
+      }
+      const candidates = [...candidatesByValue.values()]
+        .map((candidate) => ({
+          value: candidate.value,
+          valueHash: candidate.valueHash,
+          evidence: [...candidate.evidence.values()].sort(
+            (left, right) =>
+              compareCanonicalStrings(left.receiptHash, right.receiptHash) ||
+              compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
+          ),
+        }))
+        .sort(
+          (left, right) =>
+            compareCanonicalStrings(left.valueHash, right.valueHash) ||
+            compareCanonicalStrings(canonicalJson(left.value), canonicalJson(right.value))
+        );
+
+      let status: CanonicalReconciledField["status"] = "needs_review";
+      let resolution: CanonicalReconciledField["resolution"] = "unresolved";
+      let selectedValue: JsonValue | null = null;
+      let selectedValueHash: string | null = null;
+
+      if (candidates.length === 1 && conflictPolicy) {
+        status = "selected";
+        resolution = "single_value";
+        selectedValue = cloneJson(candidates[0].value);
+        selectedValueHash = candidates[0].valueHash;
+      } else if (candidates.length > 1 && conflictPolicy === "preserve_all") {
+        status = "preserved";
+        resolution = "preserve_all";
+        issues.push(
+          reconciliationIssue(
+            "conflicting_values_preserved",
+            "warning",
+            `Distinct values for ${propertyRef} are preserved without selecting a winner.`,
+            propertyRef
+          )
+        );
+      } else if (candidates.length > 1 && conflictPolicy === "require_review") {
+        issues.push(
+          reconciliationIssue(
+            "conflicting_values_require_review",
+            "review",
+            `Distinct values for ${propertyRef} require human review.`,
+            propertyRef
+          )
+        );
+      } else if (candidates.length > 1 && conflictPolicy === "prefer_authority") {
+        const authorityDomains = [
+          ...new Set(
+            candidates.flatMap((candidate) =>
+              candidate.evidence.map(
+                (evidence) => evidence.provenance.authorityDomain
+              )
+            )
+          ),
+        ].sort(compareCanonicalStrings);
+        const authorityDomain =
+          authorityDomains.length === 1 ? authorityDomains[0] : null;
+        const priorities = authorityDomain
+          ? prioritiesByDomain.get(authorityDomain)
+          : undefined;
+
+        if (!authorityDomain) {
+          issues.push(
+            reconciliationIssue(
+              "mixed_authority_domains",
+              "review",
+              `Distinct values for ${propertyRef} assert different authority domains.`,
+              propertyRef
+            )
+          );
+        } else if (!priorities) {
+          issues.push(
+            reconciliationIssue(
+              "missing_authority_priority",
+              "review",
+              `No explicit authority priority is defined for ${authorityDomain}; ${propertyRef} remains unresolved.`,
+              propertyRef
+            )
+          );
+        } else {
+          const ranked = candidates.map((candidate) => {
+            const ranks = candidate.evidence
+              .map((evidence) =>
+                priorities.indexOf(evidence.receiptAuthorityRef)
+              )
+              .filter((rank) => rank >= 0);
+            return {
+              candidate,
+              rank: ranks.length > 0 ? Math.min(...ranks) : Number.POSITIVE_INFINITY,
+            };
+          });
+          const bestRank = Math.min(...ranked.map(({ rank }) => rank));
+          const winners = Number.isFinite(bestRank)
+            ? ranked.filter(({ rank }) => rank === bestRank)
+            : [];
+          if (winners.length === 1) {
+            status = "selected";
+            resolution = "preferred_authority";
+            selectedValue = cloneJson(winners[0].candidate.value);
+            selectedValueHash = winners[0].candidate.valueHash;
+          } else {
+            issues.push(
+              reconciliationIssue(
+                winners.length === 0
+                  ? "no_ranked_authority_evidence"
+                  : "authority_priority_tie",
+                "review",
+                winners.length === 0
+                  ? `No candidate for ${propertyRef} is backed by a ranked authority reference.`
+                  : `More than one value for ${propertyRef} is backed by the highest-ranked authority reference.`,
+                propertyRef
+              )
+            );
+          }
+        }
+      }
+
+      return {
+        propertyRef,
+        conflictPolicy,
+        status,
+        resolution,
+        selectedValue,
+        selectedValueHash,
+        candidates,
+      };
+    });
+
+  const hasFatalIssue = issues.some(({ severity }) => severity === "error");
+  if (hasFatalIssue) {
+    fields = fields.map((field) => ({
+      ...field,
+      status: "needs_review",
+      resolution: "unresolved",
+      selectedValue: null,
+      selectedValueHash: null,
+    }));
+  }
+
+  const sortedIssues = [...issues].sort(
+    (left, right) =>
+      compareCanonicalStrings(left.code, right.code) ||
+      compareCanonicalStrings(left.propertyRef ?? "", right.propertyRef ?? "") ||
+      compareCanonicalStrings(left.receiptHash ?? "", right.receiptHash ?? "") ||
+      compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
+  );
+  const humanReviewRequired = sortedIssues.some(
+    ({ severity }) => severity === "error" || severity === "review"
+  );
+  const proposalWithoutHash = {
+    proposalVersion: "t2k.canonical-reconciliation-proposal.v1" as const,
+    status: hasFatalIssue
+      ? ("rejected" as const)
+      : humanReviewRequired
+        ? ("needs_review" as const)
+        : ("proposed" as const),
+    objectRef,
+    identity,
+    fields,
+    policyId,
+    policyVersion,
+    policyHash,
+    inputReceiptHashes,
+    includedReceiptHashes: [...includedReceiptHashes].sort(compareCanonicalStrings),
+    inputHash,
+    issues: sortedIssues,
+    humanReviewRequired,
+    nonMutating: true as const,
+    alternativesPreserved: true as const,
+  };
+
+  return {
+    ...proposalWithoutHash,
+    proposalHash: semanticHash(proposalWithoutHash),
   };
 }
 

@@ -40,7 +40,9 @@ The actors who propose, evaluate, promote, and roll back are deliberately
 separate synthetic identities. The event ledger is hash-chained and append-only.
 In production, authenticate those actor IDs and enforce organization roles in
 the calling service; the local runtime is not an identity provider. To remove
-the local database and its volume, run `npm run db:down`.
+the local containers while preserving their volume, run `npm run db:down`. To
+explicitly delete the disposable local volume and all lifecycle data in it, run
+`npm run db:reset`.
 
 ## Connect an MCP host
 

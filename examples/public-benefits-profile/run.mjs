@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   evaluatePurposeLimitedAccess,
   executeSourceMapping,
+  reconcileCanonicalRecords,
   resolveEntityCandidates,
   validateOntologyPackManifest,
 } from "../../packages/core/dist/index.js";
@@ -78,6 +79,58 @@ assert.equal(identity.receipt.status, "mapped");
 assert.equal(identity.canonicalRecord.identity.profile_id, "DEMO-001");
 assert.equal(identity.canonicalRecord.fields[1].provenance.authenticationState, "system_asserted");
 assert.equal(identity.receipt.humanReviewRequired, false);
+
+const secondaryIdentityPayload = {
+  ...identityPayload,
+  record_id: "IDENTITY-0002",
+  display_name: " Sample A. Claimant ",
+  enumeration: "pending",
+  event_time: "2026-08-29T15:56:00.000Z",
+  observed_time: "2026-08-29T16:00:20.000Z",
+};
+const secondaryIdentity = executeSourceMapping({
+  mapping: mapping("legacy_identity_snapshot_v1"),
+  envelope: envelope({
+    sourceSystem: "synthetic-secondary-registry",
+    sourceLocator: "synthetic://identity/secondary/IDENTITY-0002",
+    sourceRecordKey: "IDENTITY-0002",
+    authorityRef: "synthetic_secondary_registry",
+    payload: secondaryIdentityPayload,
+  }),
+});
+assert.equal(secondaryIdentity.receipt.status, "mapped");
+
+const authorityPolicy = {
+  policyId: "synthetic-party-authority",
+  policyVersion: "1.0.0",
+  prioritiesByDomain: {
+    enumeration: ["synthetic_authority", "synthetic_secondary_registry"],
+  },
+};
+const reconciliation = reconcileCanonicalRecords({
+  results: [identity, secondaryIdentity],
+  authorityPolicy,
+});
+const reconciliationAgain = reconcileCanonicalRecords({
+  results: [secondaryIdentity, identity],
+  authorityPolicy,
+});
+assert.equal(reconciliation.status, "proposed");
+assert.equal(reconciliation.humanReviewRequired, false);
+assert.equal(reconciliation.nonMutating, true);
+assert.equal(reconciliation.alternativesPreserved, true);
+assert.equal(reconciliation.proposalHash, reconciliationAgain.proposalHash);
+const reconciledEnumeration = reconciliation.fields.find(
+  (field) => field.propertyRef === "enumeration_state"
+);
+const reconciledNames = reconciliation.fields.find(
+  (field) => field.propertyRef === "normalized_name"
+);
+assert.equal(reconciledEnumeration?.resolution, "preferred_authority");
+assert.equal(reconciledEnumeration?.selectedValue, "enumerated");
+assert.equal(reconciledNames?.resolution, "preserve_all");
+assert.equal(reconciledNames?.selectedValue, null);
+assert.equal(reconciledNames?.candidates.length, 2);
 
 const driftPayload = {
   ...identityPayload,
@@ -306,6 +359,17 @@ console.log(
         duplicate: replay.receipt.receiptHash,
         lateArrival: lateEarnings.receipt.receiptHash,
         humanReview: documentEvidence.receipt.receiptHash,
+      },
+      canonicalReconciliation: {
+        status: reconciliation.status,
+        proposalHash: reconciliation.proposalHash,
+        deterministicAcrossInputOrder:
+          reconciliation.proposalHash === reconciliationAgain.proposalHash,
+        selectedEnumeration: reconciledEnumeration?.selectedValue,
+        preservedNameCandidates: reconciledNames?.candidates.length,
+        humanReviewRequired: reconciliation.humanReviewRequired,
+        nonMutating: reconciliation.nonMutating,
+        alternativesPreserved: reconciliation.alternativesPreserved,
       },
       entityResolution: {
         unique: uniqueIdentityProposal.decisionHash,
