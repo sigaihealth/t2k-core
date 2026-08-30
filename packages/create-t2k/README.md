@@ -26,11 +26,9 @@ That command records authorization, execution receipts, observations, computed
 rewards, held-out evaluation, independent promotion, and exact rollback in the
 open reference runtime.
 
-In the unreleased template, stop the local containers without deleting
-lifecycle data with `npm run db:down`. Use the explicitly destructive `npm run
-db:reset` only when you intend to delete the disposable local database volume.
-These safer database commands are implemented on unreleased `main`; the current
-npm `latest` template still uses its original lifecycle cleanup command.
+Stop the local containers without deleting lifecycle data with `npm run
+db:down`. Use the explicitly destructive `npm run db:reset` only when you
+intend to delete the disposable local database volume.
 
 To expose ontology validation, compilation, policy execution, replay, and
 reward evaluation to an MCP host, add:

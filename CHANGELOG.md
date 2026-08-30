@@ -6,6 +6,8 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-29
+
 ### Added
 
 - An opt-in governed source-mapping profile with mapping and source-schema

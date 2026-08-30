@@ -25,9 +25,7 @@ lifecycle. Node.js 20.10 or newer is required. The compiler and Postgres
 subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, and purpose-access
-APIs described below are implemented on unreleased `main` and will be included
-in the next `@t2kai/core` release. The current npm `latest` package is `0.2.0`
-and does not yet contain those exports.
+APIs described below are published in `@t2kai/core@0.3.0`.
 
 ## Compile Packs Locally
 
@@ -149,9 +147,6 @@ output hash. A changed payload or output under a reused key is rejected; a
 key-only lookup is quarantined because equivalence cannot be verified.
 
 ### Reconcile canonical records without losing evidence
-
-This API is implemented on unreleased `main` and will be included in the next
-`@t2kai/core` package release.
 
 `reconcileCanonicalRecords` turns independently mapped records for the same
 canonical object and exact identity into a deterministic, non-mutating
