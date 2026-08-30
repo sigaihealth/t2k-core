@@ -32,9 +32,9 @@ rules in the versioned specification.
 - Postgres lifecycle snapshots now read table rows, reward aggregates, and the
   verified event chain through one read-only repeatable-read transaction, so a
   snapshot cannot combine different committed database states.
-- Core publication now fails closed unless a GitHub-verified annotated tag is
-  bound to the checked-out commit and that commit is on the fetched `main`
-  history.
+- Core and `create-t2k` publication now fail closed unless a GitHub-verified
+  annotated tag is bound to the checked-out commit and that commit is on the
+  fetched `main` history.
 
 ### Compatibility
 
