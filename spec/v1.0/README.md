@@ -141,6 +141,55 @@ trust remote content.
 They do not make extracted values accepted truth. Implementations SHOULD retain
 source locators, transformation identity, review state, and authority domain.
 
+A source mapping MAY declare its own version, a source schema version,
+deterministic field mappings, target identity properties, event and observation
+time paths, an idempotency path, drift and late-arrival policies, a human
+checkpoint, and whether the mapping is replayable. A replayable mapping MUST
+declare a stable idempotency path. An implementation MUST verify a reused key
+against prior accepted payload and canonical-output hashes before calling it an
+exact duplicate; conflicting hash evidence MUST fail closed. The target object,
+mapped properties, and target identity properties MUST resolve in the compiled
+pack set. Every target
+identity property MUST also be declared as identity by the target object or an
+inherited object type; a mapping cannot promote an ordinary field into
+canonical identity.
+
+A descriptive v1 source mapping that omits `fieldMappings` remains a valid
+documentation contract. It is not an executable mapping. A governed executor
+MUST reject it until the owner supplies and reviews the complete executable
+profile. This preserves old manifests without treating an undocumented
+transform as code.
+
+Each field mapping identifies a safe source path, target property,
+requiredness, fixed normalizations, a primitive value map, an authority domain,
+and a conflict policy. Normalization declarations are data, not executable
+code. A consumer MUST NOT execute manifest text as a transform. Conflicting
+values SHOULD retain their individual provenance unless an accepted authority
+and review policy permits a governed resolution.
+
+Each target identity property MUST have exactly one required field mapping
+using the same property reference. Alias-equivalent duplicate targets MUST fail
+compilation, and an executor MUST NOT choose a last-written identity value.
+An executable mapping that produces no value for a target identity property
+MUST fail closed.
+
+An implementation claiming governed source-mapping execution SHOULD preserve
+source and mapping hashes, source schema version, source authentication state,
+authority reference, data classification, purpose tags, retention policy,
+event and observation times, lateness, duplicate state, and field-level source
+paths and value hashes. Schema drift, late arrivals, missing required fields,
+content-hash mismatches, and review checkpoints SHOULD remain explicit receipt
+state rather than being silently discarded. Mapping a record MUST NOT by itself
+promote the source assertion to accepted authority.
+
+Event, observation, watermark, request, and policy timestamps used in governed
+decisions MUST include `Z` or an explicit numeric UTC offset. An implementation
+MUST fail closed on timezone-less or invalid decision timestamps. Present but
+blank timestamps and policy windows whose end does not follow their start are
+invalid. Event, observation, and idempotency control paths MUST select an
+explicit field below the payload root; they MUST NOT use `$` to hide nested
+schema drift.
+
 `authorityModel` declares who may establish or review meaning in a domain.
 Authority declarations do not grant application credentials or action
 capabilities by themselves.
@@ -244,6 +293,33 @@ The manifest format MUST NOT be used to distribute credentials. A semantic
 authority declaration is not an authentication secret, an API scope, or an
 execution capability.
 
+Purpose-limited access evaluation SHOULD be fail-closed. An explicit deny
+SHOULD take precedence over an allow, and absence of an applicable allow SHOULD
+produce a default deny. Policies MAY constrain principal roles, stated purpose,
+subject relationship, data categories, jurisdiction, attributes, and effective
+time. Disclosure receipts SHOULD bind the exact request and policy versions to
+deterministic hashes and retain the principal, purpose, subject, requested data
+categories, source-record references, decision, and reason.
+
+An omitted selector is unconstrained. A present empty or malformed selector is
+not a wildcard: it invalidates the policy rule, and an invalid rule anywhere in
+the evaluated policy MUST prevent an allow decision. Attribute equality MUST
+require that the requested attribute is present before comparing its value.
+Blank, malformed, or nonpositive effective windows MUST fail closed.
+
+Automatic entity linking MUST require nonblank entity keys, valid positive-
+weight evidence rules, every required identifier match, the configured score
+threshold, and a positive ambiguity margin. All supplied rules, including
+invalid ones, MUST be bound to the decision evidence. An invalid rule MUST
+prohibit automatic linking rather than being silently discarded; the result
+MUST require human review or propose a new entity.
+
+Such a receipt is evidence of reference-policy evaluation, not an
+authentication token or an enforcement mechanism. The owning application MUST
+authenticate the principal, provide trusted role and relationship assertions,
+enforce the result, minimize the disclosure, and apply its retention and audit
+requirements.
+
 ## 15. Extensions
 
 The `extensions` object carries explicitly non-standard data. Extension keys
@@ -256,8 +332,9 @@ than by allowing unknown top-level properties in v1.
 
 ## 16. Reference Implementation Status
 
-The public reference package implements schema validation, normalization,
-compilation, semantic hashes, reference policy execution, held-out replay, and
-reward aggregation. The portable Postgres lifecycle, MCP adapter, and project
-scaffolder are roadmap items. Hosted Studio behavior is not part of v1
-conformance.
+The public reference repository ships schema validation, normalization,
+compilation, semantic hashes, governed source mapping, reversible entity-link
+proposals, purpose-limited access receipts, reference policy execution,
+held-out replay, reward aggregation, a portable Postgres lifecycle, a local
+stdio MCP adapter, and a project scaffolder. Hosted Studio behavior is not part
+of v1 conformance.

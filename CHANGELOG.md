@@ -6,6 +6,39 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+### Added
+
+- An opt-in governed source-mapping profile with mapping and source-schema
+  versions, safe field mappings, identity contracts, idempotency, drift and
+  late-arrival policies, human checkpoints, and field-level provenance and
+  reconciliation receipts.
+- Reversible evidence-scored entity-link proposals and deterministic,
+  purpose-limited access receipts with explicit-deny precedence and default
+  deny.
+- Positive legacy/structured and negative schema/compiler conformance fixtures,
+  plus a fully synthetic public-benefits integration example.
+
+### Changed
+
+- The compiler now checks executable source targets, exact required identity
+  mappings declared by the target object, alias-equivalent duplicate targets,
+  replay contracts, nonblank governed metadata, and dangling event object
+  references.
+- Governed runtime decisions now require explicit-offset timestamps, canonical
+  code-point ordering, nonblank identity evidence, positive ambiguity margins,
+  supplied content-hash verification, attribute presence, valid policy windows,
+  hash-evidenced replay, and fail-closed handling of incomplete mappings,
+  unstable idempotency values, and nested source drift.
+- Production dependency locks were refreshed to versions with no reported npm
+  audit findings at the time of this change.
+
+### Compatibility
+
+- Existing well-formed descriptive `sourceMappings` remain schema-valid and
+  retain their prior normalized manifest and hash shape. They compile with a review
+  diagnostic but are deliberately rejected by the new governed executor until
+  migrated. See `docs/SOURCE_MAPPING_MIGRATION.md`.
+
 ## [`@t2kai/mcp` 0.1.0] - 2026-07-18
 
 ### Added

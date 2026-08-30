@@ -1,0 +1,47 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.source-legacy",
+  "label": "Legacy descriptive source mapping conformance",
+  "description": "Synthetic compatibility fixture for pre-executor mappings.",
+  "packKind": "vertical",
+  "status": "accepted",
+  "scope": {
+    "domain": "conformance",
+    "description": "Positive legacy compatibility fixture."
+  },
+  "objectTypes": [
+    {
+      "id": "person",
+      "label": "Person",
+      "family": "Party",
+      "nodeKind": "person",
+      "identity": ["person_id"],
+      "purpose": "Synthetic person.",
+      "properties": [
+        {
+          "id": "person_id",
+          "valueType": "string",
+          "required": true,
+          "description": "Synthetic identifier.",
+          "authorityDomain": "identity",
+          "temporal": false
+        }
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "legacy_csv_description",
+      "sourceType": "csv",
+      "sourceLocator": "synthetic://conformance/legacy.csv",
+      "fields": "A:B",
+      "object": "person",
+      "properties": "person_id",
+      "transform": "descriptive migration note only",
+      "authority": "synthetic_legacy_owner",
+      "reviewStatus": "accepted"
+    }
+  ]
+}

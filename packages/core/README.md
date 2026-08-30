@@ -8,6 +8,10 @@ The package includes:
 - typed graph, claim, decision, policy, execution, observation, and learning contracts;
 - exact ontology-pack validation against the published JSON Schema;
 - deterministic pack compilation, dependency resolution, and semantic hashes;
+- governed source mapping with drift, lateness, idempotency, and field-level
+  provenance receipts;
+- reversible, evidence-scored entity-resolution proposals;
+- deterministic purpose-limited access evaluation and disclosure receipts;
 - an executable reference rule policy and held-out replay evaluator;
 - deterministic reward assessment and per-policy aggregation;
 - a Postgres reference lifecycle for contexts, episodes, receipts, evaluation,
@@ -52,6 +56,188 @@ if (!validation.valid) {
 
 The canonical package schema is exported as
 `@t2kai/core/schema/t2k-ontology-pack.v1.json`.
+
+## Map Governed Source Records
+
+`executeSourceMapping` applies a parsed, compiler-valid executable mapping to
+one immutable source envelope. It checks the declared source schema version
+and, when supplied, content hash; detects late or duplicate records; applies
+only the fixed normalization operators in the standard; and returns a canonical
+record plus a deterministic receipt.
+
+```ts
+import {
+  executeSourceMapping,
+  parseOntologyPackManifest,
+} from "@t2kai/core";
+import { compileOntologyPackSet } from "@t2kai/core/compiler";
+
+const parsedPack = parseOntologyPackManifest(rawPack);
+const compilation = parsedPack
+  ? compileOntologyPackSet({
+      manifests: [rawPack],
+      roots: [{
+        ontologyId: parsedPack.ontologyId,
+        version: parsedPack.ontologyVersion,
+      }],
+    })
+  : null;
+if (!parsedPack || compilation?.status !== "valid") {
+  throw new Error("The ontology pack is not executable");
+}
+const mapping = parsedPack.sourceMappings[0];
+if (!mapping?.fieldMappings?.length) {
+  throw new Error("The source mapping is descriptive, not executable");
+}
+const result = executeSourceMapping({
+  mapping,
+  envelope: {
+    sourceSystem: "agency.case-api",
+    sourceLocator: "case-api/cases/483",
+    sourceRecordKey: "483",
+    sourceSchemaVersion: "2026-08",
+    payload: sourceRecord,
+    eventTime: "2026-08-29T16:00:00.000Z",
+    observedTime: "2026-08-29T16:00:05.000Z",
+    authenticationState: "authenticated",
+    authorityRef: "agency.case-system",
+    dataClassification: "restricted",
+    purposeTags: ["benefit-determination"],
+    retentionPolicy: { schedule: "agency-records-policy" },
+  },
+  latestAcceptedEventTime: currentWatermark,
+  acceptedIdempotencyRecords: acceptedReceipts.map((receipt) => ({
+    idempotencyKey: receipt.idempotencyKey,
+    sourcePayloadHash: receipt.sourcePayloadHash,
+    canonicalOutputHash: receipt.canonicalOutputHash,
+  })),
+});
+
+if (
+  result.receipt.status !== "mapped" ||
+  result.receipt.humanReviewRequired
+) {
+  queueForReview(result.receipt);
+}
+```
+
+The receipt records the mapping and payload hashes, event and observation
+times, source authentication assertion, authority reference, classification,
+purpose and retention metadata, lateness, duplicate state, issues, and a hash
+of the receipt. Each mapped field retains its source path, source-value hash,
+mapping identity, authority domain, and the same source-control metadata.
+
+Legacy descriptive mappings that omit `fieldMappings` remain valid manifest
+documentation but are not executable. The function returns a rejected,
+human-review-required receipt for them. It likewise fails closed on incomplete
+execution fields, duplicate targets, undeclared or missing identity values,
+invalid or timezone-less timestamps, supplied content-hash mismatches, and
+source drift required by the selected policy. Compile the containing pack
+before execution: a mapping may use only identity properties declared by its
+target object or an inherited object type.
+
+An idempotency key alone is not proof of replay. `duplicate` status requires a
+prior accepted record with the same key, source payload hash, and canonical
+output hash. A changed payload or output under a reused key is rejected; a
+key-only lookup is quarantined because equivalence cannot be verified.
+
+`resolveEntityCandidates` separately produces a reversible entity-link
+proposal. Weighted identifier rules, required identifiers, automatic and
+review thresholds, and an ambiguity margin determine whether the result is
+`matched`, `new_entity`, or `needs_review`.
+
+```ts
+import { resolveEntityCandidates } from "@t2kai/core";
+
+const resolution = resolveEntityCandidates({
+  sourceEntityKey: "agency.case-api:party:483",
+  identifiers: { agencyPartyId: "P-483", email: "person@example.test" },
+  candidates,
+  rules: [
+    {
+      identifier: "agencyPartyId",
+      weight: 0.8,
+      requiredForAutomaticMatch: true,
+    },
+    { identifier: "email", weight: 0.2, caseInsensitive: true },
+  ],
+  automaticMatchThreshold: 0.9,
+  reviewThreshold: 0.5,
+  ambiguityMargin: 0.1,
+});
+
+if (resolution.humanReviewRequired) {
+  queueForReview(resolution);
+}
+```
+
+The resolver never mutates or merges entities. The caller decides how to store,
+review, approve, apply, or reverse a proposed link. The mapper likewise does
+not connect to source systems, persist records or receipts, or promote asserted
+source authority. Each proposal binds the canonicalized candidate evidence,
+complete rule set (including invalid rules), effective thresholds, and invalid
+rule count to `inputHash`, `rulesHash`, and `decisionHash` so reordered but
+semantically identical evidence produces the same proposal. Any invalid rule or
+blank entity key prohibits automatic matching.
+
+## Evaluate Purpose-Limited Access
+
+`evaluatePurposeLimitedAccess` evaluates a detailed request against a
+default-deny policy and returns a deterministic disclosure receipt. An active
+explicit deny takes precedence over any allow. An allow rule must cover every
+requested data category; a deny rule matches when any requested category is in
+scope. Request and policy timestamps must include `Z` or a numeric UTC offset;
+invalid, blank, timezone-less, or nonpositive policy windows fail closed. Any
+invalid effective bound in the policy denies the request before an allow rule
+can be considered. Attribute conditions require the request attribute to be
+present; absence never equals a literal value. Omitted selectors are
+unconstrained, while present empty or malformed selectors invalidate the policy
+rule and fail closed.
+
+```ts
+import { evaluatePurposeLimitedAccess } from "@t2kai/core";
+
+const accessReceipt = evaluatePurposeLimitedAccess(
+  {
+    policyId: "agency.case-read",
+    policyVersion: "1.0.0",
+    defaultEffect: "deny",
+    rules: [{
+      ruleId: "assigned-reviewer",
+      effect: "allow",
+      roles: ["case-reviewer"],
+      purposes: ["benefit-determination"],
+      subjectRelationships: ["assigned"],
+      dataCategories: ["identity", "case-status"],
+      jurisdictions: ["US-WA"],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: "2027-01-01T00:00:00.000Z",
+      reason: "Assigned reviewers may inspect the minimum case record.",
+    }],
+  },
+  {
+    requestKey: "request-2026-08-29-483",
+    principalId: "workforce:user-27",
+    principalRoles: ["case-reviewer"],
+    purpose: "benefit-determination",
+    subjectRef: "party:P-483",
+    subjectRelationship: "assigned",
+    dataCategories: ["identity", "case-status"],
+    jurisdiction: "US-WA",
+    requestedAt: "2026-08-29T16:05:00.000Z",
+    sourceRecordRefs: ["agency.case-api:483"],
+  }
+);
+
+if (accessReceipt.decision !== "allow") {
+  throw new Error(accessReceipt.reason);
+}
+```
+
+The evaluator is not an authentication token, authorization server, or data
+enforcement point. A production caller must authenticate the principal, supply
+trusted roles and attributes, enforce the result at the owning system, minimize
+the disclosed data, and persist or externally anchor receipts as required.
 
 ## Execute and Evaluate a Reference Policy
 
@@ -137,6 +323,13 @@ authenticate the caller, map organization roles to actor IDs, authorize each API
 operation, and protect the database credential before invoking the lifecycle.
 `requiredAuthority` is preserved as decision evidence; the reference package
 does not resolve it against an external IAM system.
+
+The same boundary applies to source envelopes and purpose-access requests:
+authentication state, authority references, principal roles, purposes,
+relationships, and attributes are caller assertions. The deterministic
+utilities preserve or evaluate those assertions but do not verify them against
+an external identity provider, source system, policy decision point, or records
+authority.
 
 The database trigger prevents ordinary updates and deletes to lifecycle events,
 and the hash chain detects mutation. A database owner can still alter or drop

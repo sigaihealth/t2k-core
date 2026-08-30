@@ -370,6 +370,11 @@
         "id": {
           "$ref": "#/$defs/namespacedId"
         },
+        "mappingVersion": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
         "sourceType": {
           "type": "string",
           "minLength": 1
@@ -377,6 +382,11 @@
         "sourceLocator": {
           "type": "string",
           "minLength": 1
+        },
+        "sourceSchemaVersion": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
         },
         "fields": {
           "type": "string"
@@ -390,6 +400,36 @@
         "transform": {
           "type": "string"
         },
+        "fieldMappings": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceFieldMapping"
+          }
+        },
+        "targetIdentity": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "idempotencyPath": {
+          "type": "string",
+          "pattern": "^\\$(?!.*\\.(?:__proto__|constructor|prototype)(?:\\.|$))(?:\\.[A-Za-z0-9_-]+)+$"
+        },
+        "eventTimePath": {
+          "type": "string",
+          "pattern": "^\\$(?!.*\\.(?:__proto__|constructor|prototype)(?:\\.|$))(?:\\.[A-Za-z0-9_-]+)+$"
+        },
+        "observedTimePath": {
+          "type": "string",
+          "pattern": "^\\$(?!.*\\.(?:__proto__|constructor|prototype)(?:\\.|$))(?:\\.[A-Za-z0-9_-]+)+$"
+        },
         "authority": {
           "type": "string",
           "minLength": 1
@@ -400,6 +440,118 @@
         "reviewStatus": {
           "type": "string",
           "minLength": 1
+        },
+        "driftPolicy": {
+          "enum": ["reject", "quarantine", "allow_with_review"]
+        },
+        "lateArrivalPolicy": {
+          "enum": ["reject", "quarantine", "accept_with_review"]
+        },
+        "humanCheckpoint": {
+          "enum": ["always", "on_issue", "none"]
+        },
+        "replayable": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"fieldMappings": {}},
+            "required": ["fieldMappings"]
+          },
+          "then": {
+            "properties": {
+              "mappingVersion": {},
+              "sourceSchemaVersion": {},
+              "targetIdentity": {},
+              "driftPolicy": {},
+              "lateArrivalPolicy": {},
+              "humanCheckpoint": {},
+              "replayable": {},
+              "sourceType": {"type": "string", "pattern": "\\S"},
+              "sourceLocator": {"type": "string", "pattern": "\\S"},
+              "authority": {"type": "string", "pattern": "\\S"},
+              "reviewStatus": {"type": "string", "pattern": "\\S"}
+            },
+            "required": [
+              "mappingVersion",
+              "sourceSchemaVersion",
+              "targetIdentity",
+              "driftPolicy",
+              "lateArrivalPolicy",
+              "humanCheckpoint",
+              "replayable"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": ["replayable"],
+            "properties": {"replayable": {"const": true}}
+          },
+          "then": {
+            "properties": {"idempotencyPath": {}},
+            "required": ["idempotencyPath"]
+          }
+        }
+      ]
+    },
+    "sourceFieldMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "targetProperty",
+        "required",
+        "normalizations",
+        "valueMap",
+        "authorityDomain",
+        "conflictPolicy"
+      ],
+      "properties": {
+        "sourcePath": {
+          "type": "string",
+          "pattern": "^\\$(?!.*\\.(?:__proto__|constructor|prototype)(?:\\.|$))(?:\\.[A-Za-z0-9_-]+)*$"
+        },
+        "targetProperty": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "normalizations": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "trim",
+              "collapse_whitespace",
+              "lowercase",
+              "uppercase",
+              "digits_only",
+              "iso_date"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "valueMap": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "number"},
+              {"type": "boolean"},
+              {"type": "null"}
+            ]
+          }
+        },
+        "authorityDomain": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "conflictPolicy": {
+          "enum": ["preserve_all", "prefer_authority", "require_review"]
         }
       }
     },

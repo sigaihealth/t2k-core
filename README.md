@@ -20,6 +20,12 @@ network, private packs, and customer data are separate products.
 - strict manifest validation through the published schema;
 - deterministic pack compilation, dependency resolution, and semantic hashes;
 - typed graph, claim, decision, execution, observation, and learning contracts;
+- governed source mapping with schema-drift, late-arrival, idempotency, and
+  field-level provenance receipts;
+- reversible, evidence-scored entity-resolution proposals that route ambiguous
+  candidates to human review;
+- deterministic purpose-limited access evaluation with explicit-deny
+  precedence, mandatory default deny, and hashed disclosure receipts;
 - a server-side REST client for the hosted control plane;
 - an executable reference policy and held-out replay evaluator;
 - deterministic reward computation and per-policy aggregation;
@@ -46,6 +52,18 @@ Run only the synthetic Harborlight example:
 ```bash
 npm run example:harborlight
 ```
+
+Run the synthetic public-benefits integration example:
+
+```bash
+npm run example:public-benefits-profile
+```
+
+That example compiles a shared ontology across mainframe, batch, authenticated
+API, and document-derived inputs; emits source and mapping receipts; detects
+drift, replay, and late arrival; proposes reversible entity links; and evaluates
+purpose-limited access. It contains no claimant data and does not emulate an
+agency deployment.
 
 It validates and compiles a fictional field-service ontology, then evaluates a
 challenger against a disjoint 20-episode holdout. Both policies have logged
@@ -111,8 +129,11 @@ npm install @t2kai/mcp
 
 ```ts
 import {
+  evaluatePurposeLimitedAccess,
   evaluateReferencePolicy,
   evaluateReferenceReplay,
+  executeSourceMapping,
+  resolveEntityCandidates,
   validateOntologyPackManifest,
 } from "@t2kai/core";
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
@@ -132,8 +153,14 @@ non-normative pre-v1 migration path is documented separately in
 | Specification and schema | Managed semantic registry |
 | Compiler and typed contracts | Multi-tenant Studio operations |
 | Reference policy, reward, replay, and local Postgres lifecycle | Fleet shadow/canary orchestration |
+| Governed source mapping, reversible entity resolution, and purpose-access receipts | Managed connector transport, enterprise IAM enforcement, and compliance operations |
 | Scaffolder, local MCP adapter, conformance kit, and synthetic examples | Private packs and verified fact corpus |
-| API client | Enterprise identity, connectors, and SLAs |
+| API client | Enterprise identity, managed service operations, and SLAs |
+
+The source-integration and purpose-access utilities are deterministic reference
+functions. They do not fetch or mutate source systems, authenticate principals,
+enforce an IAM decision, persist receipts, or promote source data to accepted
+authority; the calling application owns those controls.
 
 ## Contributing
 

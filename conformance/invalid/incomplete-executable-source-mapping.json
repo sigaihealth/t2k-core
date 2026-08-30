@@ -1,0 +1,45 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.source-incomplete",
+  "label": "Incomplete source mapping",
+  "packKind": "vertical",
+  "status": "accepted",
+  "scope": {
+    "domain": "conformance",
+    "description": "Negative schema fixture."
+  },
+  "objectTypes": [
+    {
+      "id": "person",
+      "family": "Party",
+      "identity": ["person_id"],
+      "purpose": "Synthetic person.",
+      "properties": [
+        {"id": "person_id", "valueType": "string", "required": true}
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "incomplete_mapping",
+      "sourceType": "api",
+      "sourceLocator": "synthetic://conformance/incomplete",
+      "object": "person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.person_id",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": [],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "require_review"
+        }
+      ],
+      "authority": "synthetic_owner",
+      "reviewStatus": "accepted"
+    }
+  ]
+}
