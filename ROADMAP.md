@@ -28,6 +28,21 @@ Dates are deliberately omitted until maintainers can defend them.
 - Hash-chained, append-only lifecycle event ledger with verification
 - Persisted Harborlight and `create-t2k` golden paths tested on PostgreSQL 16
 
+## Shipped in 0.3
+
+- Opt-in executable source mappings with schema-drift, late-arrival,
+  idempotency, replay, identity, and human-checkpoint controls
+- Deterministic mapping receipts with field-level provenance and explicit
+  authentication, authority, classification, purpose, and retention assertions
+- Non-mutating canonical reconciliation with preserved alternatives, explicit
+  authority priorities, integrity checks, and fail-closed human-review routing
+- Reversible evidence-scored entity-link proposals and purpose-limited access
+  receipts with explicit-deny precedence and default deny
+- Fully synthetic public-benefits integration profile covering independent
+  source systems, reconciliation, entity linking, and access evaluation
+- Safer generated-project database lifecycle commands: `db:down` preserves the
+  volume and the explicitly destructive `db:reset` removes it
+
 ## Shipped in `@t2kai/mcp` 0.1
 
 - Local stdio adapter over the same public compiler, policy, replay, reward, and lifecycle contracts

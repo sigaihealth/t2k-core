@@ -61,11 +61,9 @@ npm run db:up
 npm run lifecycle
 ```
 
-Safer database commands are on unreleased `main`: the next `create-t2k` release
-will make `db:down` preserve the local database volume and reserve the
-explicitly destructive `db:reset` command for deleting disposable lifecycle
-data. Use the repository examples below to exercise the new integration and
-reconciliation APIs until the next core release is published.
+Use `npm run db:down` to stop the local containers while preserving the database
+volume. Use the explicitly destructive `npm run db:reset` only when you intend
+to delete the disposable lifecycle data.
 
 ## Explore the Repository Examples
 
@@ -138,18 +136,21 @@ npm install @t2kai/mcp
 ```ts
 import {
   T2kClient,
+  evaluatePurposeLimitedAccess,
   evaluateReferencePolicy,
   evaluateReferenceReplay,
+  executeSourceMapping,
+  reconcileCanonicalRecords,
+  resolveEntityCandidates,
   validateOntologyPackManifest,
 } from "@t2kai/core";
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-The governed source-mapping, canonical-reconciliation, entity-resolution, and
-purpose-access exports documented in the core guide are implemented on
-unreleased `main`; they are not part of the current npm `latest` package. Keep
-that source-versus-package boundary until the next core release is published.
+`@t2kai/core@0.3.0` includes the governed source-mapping,
+canonical-reconciliation, entity-resolution, and purpose-access exports
+documented in the core guide.
 
 See [packages/core/README.md](packages/core/README.md) for API examples and
 [packages/mcp/README.md](packages/mcp/README.md) for MCP modes and security, and

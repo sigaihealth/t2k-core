@@ -52,7 +52,7 @@ try {
   );
   if (
     generatedManifest.name !== "generated-project" ||
-    generatedManifest.dependencies?.["@t2kai/core"] !== "^0.2.0" ||
+    generatedManifest.dependencies?.["@t2kai/core"] !== "^0.3.0" ||
     generatedManifest.scripts?.["db:down"] !== "docker compose down" ||
     generatedManifest.scripts?.["db:reset"] !== "docker compose down -v"
   ) {
