@@ -54,7 +54,7 @@
     "release:verify": "node scripts/verify-release-tag.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@t2kai/core": "^0.4.0",
     "zod": "4.4.3"
   },
