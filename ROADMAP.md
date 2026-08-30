@@ -51,6 +51,11 @@ Dates are deliberately omitted until maintainers can defend them.
 - Deliberate exclusion of human approval, authorization, closure, evaluation, promotion, deployment, and rollback tools
 - Protocol-level boundary tests, PostgreSQL integration coverage, and clean-tarball stdio smoke test
 
+## Shipped in `@t2kai/mcp` 0.2
+
+- Runtime dependency aligned with `@t2kai/core@^0.3.0` so MCP installations use
+  the same released validation and reference runtime as direct core consumers
+
 ## Next
 
 - More negative conformance fixtures and cross-language test vectors

@@ -47,6 +47,14 @@ rules in the versioned specification.
   diagnostic but are deliberately rejected by the new governed executor until
   migrated. See `docs/SOURCE_MAPPING_MIGRATION.md`.
 
+## [`@t2kai/mcp` 0.2.0] - 2026-08-29
+
+### Changed
+
+- Updated the MCP adapter to depend on `@t2kai/core@^0.3.0`, keeping ontology
+  validation, compilation, reference evaluation, and lifecycle operations on
+  the same released runtime as direct package consumers.
+
 ## [`@t2kai/mcp` 0.1.0] - 2026-07-18
 
 ### Added

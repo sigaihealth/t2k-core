@@ -1,6 +1,6 @@
 {
   "name": "@t2kai/mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A safe local MCP adapter for the open T2K governed-decision runtime.",
   "license": "Apache-2.0",
   "keywords": [
@@ -55,7 +55,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@t2kai/core": "^0.2.0",
+    "@t2kai/core": "^0.3.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
