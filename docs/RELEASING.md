@@ -26,12 +26,12 @@ to an unrelated npm user and must not appear in package names or imports.
 8. `@t2kai/core` is published before a `create-t2k` version that depends on it.
 9. `@t2kai/core` is published before an `@t2kai/mcp` version that depends on it.
 
-The core release workflow resolves the pushed tag through GitHub's Git Database
-API and requires an annotated tag whose signature GitHub reports as verified. It
-binds that exact tag-object and peeled commit to the local checkout, fetches
-`origin/main`, and requires the release commit to be an ancestor of the fetched
-branch before any OIDC-backed publish can run. Lightweight, unsigned, moved, and
-off-main tags fail closed.
+The core and `create-t2k` release workflows resolve each pushed tag through
+GitHub's Git Database API and require an annotated tag whose signature GitHub
+reports as verified. Each workflow binds that exact tag-object and peeled commit
+to the local checkout, fetches `origin/main`, and requires the release commit to
+be an ancestor of the fetched branch before any OIDC-backed publish can run.
+Lightweight, unsigned, moved, and off-main tags fail closed.
 
 The local verifier checks tag/version equality, annotated-tag structure,
 checkout identity, and `origin/main` ancestry. GitHub signature verification is
@@ -58,6 +58,7 @@ git push origin mcp-vX.Y.Z
 
 git -c gpg.format=ssh -c user.signingkey=/path/to/release_signing_key \
   tag -s create-t2k-vX.Y.Z -m "create-t2k X.Y.Z"
+npm run release:verify --workspace create-t2k -- create-t2k-vX.Y.Z
 git push origin create-t2k-vX.Y.Z
 ```
 
