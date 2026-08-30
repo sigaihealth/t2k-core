@@ -1,0 +1,83 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.source-structured",
+  "label": "Structured source mapping conformance",
+  "description": "Synthetic governed source-mapping fixture.",
+  "packKind": "vertical",
+  "status": "accepted",
+  "scope": {
+    "domain": "conformance",
+    "description": "Positive structured source-mapping fixture."
+  },
+  "objectTypes": [
+    {
+      "id": "person",
+      "label": "Person",
+      "family": "Party",
+      "nodeKind": "person",
+      "identity": ["person_id"],
+      "purpose": "Synthetic person.",
+      "properties": [
+        {
+          "id": "person_id",
+          "valueType": "string",
+          "required": true,
+          "description": "Synthetic identifier.",
+          "authorityDomain": "identity",
+          "temporal": false
+        },
+        {
+          "id": "display_name",
+          "valueType": "string",
+          "required": false,
+          "description": "Synthetic display name.",
+          "authorityDomain": "identity",
+          "temporal": true
+        }
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "person_api_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "api",
+      "sourceLocator": "synthetic://conformance/person-api",
+      "sourceSchemaVersion": "person-v1",
+      "object": "person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.person_id",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": ["trim", "uppercase"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.name",
+          "targetProperty": "display_name",
+          "required": false,
+          "normalizations": ["trim", "collapse_whitespace"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "preserve_all"
+        }
+      ],
+      "targetIdentity": ["person_id"],
+      "idempotencyPath": "$.record_id",
+      "eventTimePath": "$.event_time",
+      "observedTimePath": "$.observed_time",
+      "authority": "synthetic_person_api",
+      "riskTier": "restricted",
+      "reviewStatus": "accepted",
+      "driftPolicy": "reject",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "on_issue",
+      "replayable": true
+    }
+  ]
+}

@@ -577,6 +577,252 @@ function buildDefinitions(
       manifest.contextDimensions,
       (value) => String(value.id)
     );
+
+    manifest.sourceMappings.forEach((mapping, mappingIndex) => {
+      const fieldMappings = mapping.fieldMappings ?? [];
+      const targetIdentity = mapping.targetIdentity ?? [];
+      const executable =
+        mapping.fieldMappings !== undefined ||
+        mapping.mappingVersion !== undefined ||
+        mapping.sourceSchemaVersion !== undefined ||
+        mapping.targetIdentity !== undefined ||
+        mapping.driftPolicy !== undefined ||
+        mapping.lateArrivalPolicy !== undefined ||
+        mapping.humanCheckpoint !== undefined ||
+        mapping.replayable !== undefined;
+
+      if (!executable) {
+        addDiagnostic(diagnostics, {
+          level: "review",
+          code: "descriptive_source_mapping_not_executable",
+          ontologyId: manifest.ontologyId,
+          path: `sourceMappings.${mappingIndex}`,
+          message: `Source mapping ${mapping.id} remains a descriptive v1 mapping and cannot be passed to the governed executor until migrated.`,
+        });
+      } else {
+        const requiredExecutionFields: Array<[string, unknown]> = [
+          ["sourceType", mapping.sourceType],
+          ["sourceLocator", mapping.sourceLocator],
+          ["authority", mapping.authority],
+          ["reviewStatus", mapping.reviewStatus],
+          ["mappingVersion", mapping.mappingVersion],
+          ["sourceSchemaVersion", mapping.sourceSchemaVersion],
+          ["fieldMappings", fieldMappings.length > 0],
+          ["targetIdentity", targetIdentity.length > 0],
+          ["driftPolicy", mapping.driftPolicy],
+          ["lateArrivalPolicy", mapping.lateArrivalPolicy],
+          ["humanCheckpoint", mapping.humanCheckpoint],
+          ["replayable", typeof mapping.replayable === "boolean"],
+        ];
+        for (const [field, value] of requiredExecutionFields) {
+          if (!value) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "incomplete_executable_source_mapping",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.${field}`,
+              message: `Executable source mapping ${mapping.id} requires ${field}.`,
+            });
+          }
+        }
+      }
+
+      const targetObjectReference = resolveObjectReference(
+        manifest.ontologyId,
+        mapping.object,
+        objectDefinitions
+      );
+
+      if (!targetObjectReference) {
+        addDiagnostic(diagnostics, {
+          level: executable ? "error" : "review",
+          code: executable
+            ? "dangling_source_mapping_object"
+            : "dangling_descriptive_source_mapping_object",
+          ontologyId: manifest.ontologyId,
+          path: `sourceMappings.${mappingIndex}.object`,
+          message: `Source mapping ${mapping.id} references unknown object type ${mapping.object}.`,
+        });
+      } else {
+        const validProperties = new Set<string>();
+        const canonicalPropertyByAlias = new Map<string, string>();
+        const declaredIdentityProperties = new Set<string>();
+        const declaredIdentityReferences: Array<{
+          objectReference: string;
+          objectId: string;
+          propertyReference: string;
+        }> = [];
+        const visitedObjects = new Set<string>();
+        let currentObjectReference: string | undefined = targetObjectReference;
+        while (
+          currentObjectReference &&
+          !visitedObjects.has(currentObjectReference)
+        ) {
+          visitedObjects.add(currentObjectReference);
+          const currentObject = objectTypes.get(currentObjectReference);
+          for (const property of currentObject?.properties ?? []) {
+            const canonicalProperty = `${currentObjectReference}.${property.id}`;
+            const aliases = [
+              property.id,
+              `${mapping.object}.${property.id}`,
+              canonicalProperty,
+            ];
+            for (const alias of aliases) {
+              validProperties.add(alias);
+              if (!canonicalPropertyByAlias.has(alias)) {
+                canonicalPropertyByAlias.set(alias, canonicalProperty);
+              }
+            }
+          }
+          for (const propertyReference of currentObject?.identity ?? []) {
+            declaredIdentityReferences.push({
+              objectReference: currentObjectReference,
+              objectId: currentObject?.id ?? "",
+              propertyReference,
+            });
+          }
+          currentObjectReference = specializationEdges.get(currentObjectReference);
+        }
+
+        for (const identityReference of declaredIdentityReferences) {
+          const currentObject = objectTypes.get(identityReference.objectReference);
+          const localProperty = currentObject?.properties.find(
+            (property) =>
+              identityReference.propertyReference === property.id ||
+              identityReference.propertyReference ===
+                `${identityReference.objectId}.${property.id}` ||
+              identityReference.propertyReference ===
+                `${identityReference.objectReference}.${property.id}`
+          );
+          const canonicalProperty = localProperty
+            ? `${identityReference.objectReference}.${localProperty.id}`
+            : canonicalPropertyByAlias.get(identityReference.propertyReference);
+          if (canonicalProperty) {
+            declaredIdentityProperties.add(canonicalProperty);
+          }
+        }
+
+        const targetCounts = new Map<string, number>();
+        fieldMappings.forEach((fieldMapping, fieldIndex) => {
+          if (!validProperties.has(fieldMapping.targetProperty)) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "unknown_source_mapping_property",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.fieldMappings.${fieldIndex}.targetProperty`,
+              message: `Source mapping ${mapping.id} targets unknown property ${fieldMapping.targetProperty} on ${targetObjectReference}.`,
+            });
+          } else {
+            const canonicalProperty = canonicalPropertyByAlias.get(
+              fieldMapping.targetProperty
+            ) as string;
+            targetCounts.set(
+              canonicalProperty,
+              (targetCounts.get(canonicalProperty) ?? 0) + 1
+            );
+          }
+        });
+
+        for (const [canonicalProperty, count] of targetCounts) {
+          if (count > 1) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "duplicate_source_mapping_target",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.fieldMappings`,
+              message: `Source mapping ${mapping.id} maps ${count} fields to ${canonicalProperty}; one canonical target may be mapped only once.`,
+            });
+          }
+        }
+
+        const canonicalIdentityProperties = new Set<string>();
+        targetIdentity.forEach((propertyReference, identityIndex) => {
+          if (!validProperties.has(propertyReference)) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "unknown_source_mapping_identity_property",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.targetIdentity.${identityIndex}`,
+              message: `Source mapping ${mapping.id} identifies records with unknown property ${propertyReference} on ${targetObjectReference}.`,
+            });
+            return;
+          }
+
+          const canonicalProperty = canonicalPropertyByAlias.get(
+            propertyReference
+          ) as string;
+          if (!declaredIdentityProperties.has(canonicalProperty)) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "source_mapping_identity_not_declared_by_object",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.targetIdentity.${identityIndex}`,
+              message: `Identity property ${propertyReference} in source mapping ${mapping.id} is not declared as identity by ${targetObjectReference} or an inherited object type.`,
+            });
+          }
+          if (canonicalIdentityProperties.has(canonicalProperty)) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "duplicate_source_mapping_identity",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.targetIdentity.${identityIndex}`,
+              message: `Source mapping ${mapping.id} declares alias-equivalent identity property ${propertyReference} more than once.`,
+            });
+          }
+          canonicalIdentityProperties.add(canonicalProperty);
+
+          const exactMappings = fieldMappings.filter(
+            (fieldMapping) => fieldMapping.targetProperty === propertyReference
+          );
+          if (exactMappings.length !== 1) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "source_mapping_identity_not_exactly_mapped",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.targetIdentity.${identityIndex}`,
+              message: `Identity property ${propertyReference} in source mapping ${mapping.id} must have exactly one field mapping using the same property reference.`,
+            });
+          } else if (!exactMappings[0]?.required) {
+            addDiagnostic(diagnostics, {
+              level: "error",
+              code: "source_mapping_identity_not_required",
+              ontologyId: manifest.ontologyId,
+              path: `sourceMappings.${mappingIndex}.fieldMappings`,
+              message: `Identity property ${propertyReference} in source mapping ${mapping.id} must map from a required source field.`,
+            });
+          }
+        });
+      }
+
+      if (mapping.replayable && !mapping.idempotencyPath) {
+        addDiagnostic(diagnostics, {
+          level: "error",
+          code: "missing_source_mapping_idempotency_path",
+          ontologyId: manifest.ontologyId,
+          path: `sourceMappings.${mappingIndex}.idempotencyPath`,
+          message: `Replayable source mapping ${mapping.id} requires an idempotencyPath.`,
+        });
+      }
+    });
+
+    manifest.eventTypes.forEach((eventType, eventIndex) => {
+      if (
+        !resolveObjectReference(
+          manifest.ontologyId,
+          eventType.createsOrUpdates,
+          objectDefinitions
+        )
+      ) {
+        addDiagnostic(diagnostics, {
+          level: "error",
+          code: "dangling_event_object",
+          ontologyId: manifest.ontologyId,
+          path: `eventTypes.${eventIndex}.createsOrUpdates`,
+          message: `Event type ${eventType.id} creates or updates unknown object type ${eventType.createsOrUpdates}.`,
+        });
+      }
+    });
+
     addCollection(
       "source_mapping",
       manifest.sourceMappings,

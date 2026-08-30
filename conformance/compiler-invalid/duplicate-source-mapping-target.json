@@ -1,0 +1,62 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.source-duplicate",
+  "label": "Duplicate target source mapping",
+  "packKind": "vertical",
+  "status": "accepted",
+  "scope": {
+    "domain": "conformance",
+    "description": "Negative compiler fixture."
+  },
+  "objectTypes": [
+    {
+      "id": "person",
+      "family": "Party",
+      "identity": ["person_id"],
+      "purpose": "Synthetic person.",
+      "properties": [
+        {"id": "person_id", "valueType": "string", "required": true}
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "duplicate_mapping",
+      "mappingVersion": "1.0.0",
+      "sourceType": "api",
+      "sourceLocator": "synthetic://conformance/duplicate",
+      "sourceSchemaVersion": "person-v1",
+      "object": "person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.person_id",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": ["trim"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "require_review"
+        },
+        {
+          "sourcePath": "$.alternate_person_id",
+          "targetProperty": "person.person_id",
+          "required": true,
+          "normalizations": ["trim"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "require_review"
+        }
+      ],
+      "targetIdentity": ["person_id"],
+      "idempotencyPath": "$.record_id",
+      "authority": "synthetic_owner",
+      "reviewStatus": "accepted",
+      "driftPolicy": "reject",
+      "lateArrivalPolicy": "reject",
+      "humanCheckpoint": "on_issue",
+      "replayable": true
+    }
+  ]
+}

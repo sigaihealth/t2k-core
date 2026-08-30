@@ -1,0 +1,53 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "conformance.source-identity-alias",
+  "label": "Identity alias mismatch",
+  "packKind": "vertical",
+  "status": "accepted",
+  "scope": {
+    "domain": "conformance",
+    "description": "Negative compiler fixture."
+  },
+  "objectTypes": [
+    {
+      "id": "person",
+      "family": "Party",
+      "identity": ["person_id"],
+      "purpose": "Synthetic person.",
+      "properties": [
+        {"id": "person_id", "valueType": "string", "required": true}
+      ]
+    }
+  ],
+  "sourceMappings": [
+    {
+      "id": "alias_mapping",
+      "mappingVersion": "1.0.0",
+      "sourceType": "api",
+      "sourceLocator": "synthetic://conformance/alias",
+      "sourceSchemaVersion": "person-v1",
+      "object": "person",
+      "fieldMappings": [
+        {
+          "sourcePath": "$.person_id",
+          "targetProperty": "person_id",
+          "required": true,
+          "normalizations": ["trim"],
+          "valueMap": {},
+          "authorityDomain": "identity",
+          "conflictPolicy": "require_review"
+        }
+      ],
+      "targetIdentity": ["person.person_id"],
+      "idempotencyPath": "$.record_id",
+      "authority": "synthetic_owner",
+      "reviewStatus": "accepted",
+      "driftPolicy": "reject",
+      "lateArrivalPolicy": "reject",
+      "humanCheckpoint": "on_issue",
+      "replayable": true
+    }
+  ]
+}

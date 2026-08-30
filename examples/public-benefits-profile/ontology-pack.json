@@ -1,0 +1,210 @@
+{
+  "$schema": "https://t2k.ai/schemas/t2k-ontology-pack.v1.schema.json",
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyVersion": "1.0.0",
+  "ontologyId": "demo.public-benefits-profile",
+  "label": "Synthetic Public Benefits Profile",
+  "description": "A synthetic ontology and integration contract for reconciling independently governed benefit records without promoting source authority or silently merging people.",
+  "packKind": "vertical",
+  "status": "accepted",
+  "scope": {
+    "domain": "public_benefits",
+    "description": "Synthetic interoperability, identity safety, and purpose-limited access demonstration.",
+    "jurisdictions": ["US-DEMO"],
+    "industries": ["public_sector"],
+    "businessStages": [],
+    "organizationSizes": [],
+    "exclusions": ["production claimant data", "eligibility adjudication"]
+  },
+  "objectTypes": [
+    {
+      "id": "party",
+      "label": "Party",
+      "family": "Common party",
+      "nodeKind": "person",
+      "identity": ["profile_id"],
+      "purpose": "A canonical party profile whose values retain field-level source and authority provenance.",
+      "properties": [
+        {"id": "profile_id", "valueType": "string", "required": true, "description": "Synthetic profile identifier.", "authorityDomain": "identity", "temporal": false},
+        {"id": "normalized_name", "valueType": "string", "required": false, "description": "Normalized display name, not an identity key by itself.", "authorityDomain": "identity", "temporal": true},
+        {"id": "birth_date", "valueType": "date", "required": false, "description": "Birth date claim retained with source authority.", "authorityDomain": "identity", "temporal": true},
+        {"id": "enumeration_state", "valueType": "string", "required": false, "description": "Synthetic enumeration lifecycle state.", "authorityDomain": "enumeration", "temporal": true},
+        {"id": "phone_last4", "valueType": "string", "required": false, "description": "Last four digits of a synthetic contact number.", "authorityDomain": "claimant_assertion", "temporal": true},
+        {"id": "identity_assurance", "valueType": "string", "required": false, "description": "Authentication assurance attached to a claimant assertion.", "authorityDomain": "authentication", "temporal": true}
+      ]
+    },
+    {
+      "id": "benefit_claim",
+      "label": "Benefit claim",
+      "family": "Claim",
+      "nodeKind": "claim",
+      "identity": ["claim_id"],
+      "purpose": "A source-bearing synthetic claim that does not overwrite party identity.",
+      "properties": [
+        {"id": "claim_id", "valueType": "string", "required": true, "description": "Synthetic claim identifier.", "authorityDomain": "claim", "temporal": false},
+        {"id": "profile_id", "valueType": "string", "required": true, "description": "Source-reported party reference.", "authorityDomain": "identity", "temporal": false},
+        {"id": "earnings_period", "valueType": "date", "required": false, "description": "Period represented by the earnings assertion.", "authorityDomain": "earnings", "temporal": true},
+        {"id": "wage_amount", "valueType": "number", "required": false, "description": "Synthetic wage amount.", "authorityDomain": "earnings", "temporal": true},
+        {"id": "claim_state", "valueType": "string", "required": false, "description": "Source claim state.", "authorityDomain": "claim", "temporal": true}
+      ]
+    },
+    {
+      "id": "evidence_document",
+      "label": "Evidence document",
+      "family": "Evidence",
+      "nodeKind": "artifact",
+      "identity": ["evidence_id"],
+      "purpose": "A synthetic document-derived assertion that always requires human disposition.",
+      "properties": [
+        {"id": "evidence_id", "valueType": "string", "required": true, "description": "Synthetic evidence identifier.", "authorityDomain": "evidence", "temporal": false},
+        {"id": "profile_id", "valueType": "string", "required": true, "description": "Source-reported party reference.", "authorityDomain": "identity", "temporal": false},
+        {"id": "evidence_type", "valueType": "string", "required": false, "description": "Controlled evidence type.", "authorityDomain": "evidence", "temporal": false},
+        {"id": "extracted_fact", "valueType": "string", "required": false, "description": "Machine-extracted assertion pending review.", "authorityDomain": "document_extraction", "temporal": true},
+        {"id": "received_at", "valueType": "timestamp", "required": false, "description": "Receipt timestamp.", "authorityDomain": "evidence", "temporal": true}
+      ]
+    },
+    {
+      "id": "work_item",
+      "label": "Work item",
+      "family": "Workflow",
+      "nodeKind": "workflow",
+      "identity": ["work_item_id"],
+      "purpose": "A review or reconciliation task routed to a human owner.",
+      "properties": [
+        {"id": "work_item_id", "valueType": "string", "required": true, "description": "Workflow identifier.", "authorityDomain": "workflow", "temporal": false},
+        {"id": "profile_id", "valueType": "string", "required": true, "description": "Related profile.", "authorityDomain": "identity", "temporal": false},
+        {"id": "route", "valueType": "string", "required": true, "description": "Human review queue.", "authorityDomain": "workflow", "temporal": true},
+        {"id": "disposition", "valueType": "string", "required": false, "description": "Human disposition and reason.", "authorityDomain": "workflow", "temporal": true}
+      ]
+    }
+  ],
+  "structuralRelationships": [
+    {"from": "benefit_claim", "property": "profile_id", "to": "party", "cardinality": "many_to_one", "description": "Claims reference a party without owning party identity."},
+    {"from": "evidence_document", "property": "profile_id", "to": "party", "cardinality": "many_to_one", "description": "Evidence references a party and remains independently traceable."},
+    {"from": "work_item", "property": "profile_id", "to": "party", "cardinality": "many_to_one", "description": "Human review work is routed against a profile."}
+  ],
+  "sourceMappings": [
+    {
+      "id": "legacy_identity_snapshot_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "mainframe_snapshot",
+      "sourceLocator": "synthetic://identity/mainframe",
+      "sourceSchemaVersion": "legacy-person-v3",
+      "object": "party",
+      "fieldMappings": [
+        {"sourcePath": "$.profile_key", "targetProperty": "profile_id", "required": true, "normalizations": ["trim", "uppercase"], "valueMap": {}, "authorityDomain": "identity", "conflictPolicy": "require_review"},
+        {"sourcePath": "$.display_name", "targetProperty": "normalized_name", "required": false, "normalizations": ["trim", "collapse_whitespace"], "valueMap": {}, "authorityDomain": "identity", "conflictPolicy": "preserve_all"},
+        {"sourcePath": "$.birth_date", "targetProperty": "birth_date", "required": false, "normalizations": ["iso_date"], "valueMap": {}, "authorityDomain": "identity", "conflictPolicy": "require_review"},
+        {"sourcePath": "$.enumeration", "targetProperty": "enumeration_state", "required": false, "normalizations": ["trim", "lowercase"], "valueMap": {"pre": "pre_enumeration", "active": "enumerated"}, "authorityDomain": "enumeration", "conflictPolicy": "prefer_authority"}
+      ],
+      "targetIdentity": ["profile_id"],
+      "idempotencyPath": "$.record_id",
+      "eventTimePath": "$.event_time",
+      "observedTimePath": "$.observed_time",
+      "authority": "synthetic_identity_system",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "on_issue",
+      "replayable": true
+    },
+    {
+      "id": "batch_earnings_claim_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "batch_file",
+      "sourceLocator": "synthetic://earnings/batch",
+      "sourceSchemaVersion": "earnings-row-v2",
+      "object": "benefit_claim",
+      "fieldMappings": [
+        {"sourcePath": "$.claim_key", "targetProperty": "claim_id", "required": true, "normalizations": ["trim", "uppercase"], "valueMap": {}, "authorityDomain": "claim", "conflictPolicy": "require_review"},
+        {"sourcePath": "$.profile_key", "targetProperty": "profile_id", "required": true, "normalizations": ["trim", "uppercase"], "valueMap": {}, "authorityDomain": "identity", "conflictPolicy": "preserve_all"},
+        {"sourcePath": "$.period_start", "targetProperty": "earnings_period", "required": true, "normalizations": ["iso_date"], "valueMap": {}, "authorityDomain": "earnings", "conflictPolicy": "preserve_all"},
+        {"sourcePath": "$.gross_wages", "targetProperty": "wage_amount", "required": true, "normalizations": [], "valueMap": {}, "authorityDomain": "earnings", "conflictPolicy": "prefer_authority"},
+        {"sourcePath": "$.claim_state", "targetProperty": "claim_state", "required": true, "normalizations": ["trim", "lowercase"], "valueMap": {"open": "open", "closed": "closed"}, "authorityDomain": "claim", "conflictPolicy": "prefer_authority"}
+      ],
+      "targetIdentity": ["claim_id"],
+      "idempotencyPath": "$.row_id",
+      "eventTimePath": "$.event_time",
+      "observedTimePath": "$.observed_time",
+      "authority": "synthetic_earnings_system",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "reject",
+      "lateArrivalPolicy": "accept_with_review",
+      "humanCheckpoint": "on_issue",
+      "replayable": true
+    },
+    {
+      "id": "claimant_contact_assertion_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "authenticated_api",
+      "sourceLocator": "synthetic://claimant/contact-api",
+      "sourceSchemaVersion": "contact-assertion-v1",
+      "object": "party",
+      "fieldMappings": [
+        {"sourcePath": "$.profile_key", "targetProperty": "profile_id", "required": true, "normalizations": ["trim", "uppercase"], "valueMap": {}, "authorityDomain": "identity", "conflictPolicy": "preserve_all"},
+        {"sourcePath": "$.phone", "targetProperty": "phone_last4", "required": true, "normalizations": ["digits_only"], "valueMap": {}, "authorityDomain": "claimant_assertion", "conflictPolicy": "require_review"},
+        {"sourcePath": "$.assurance", "targetProperty": "identity_assurance", "required": true, "normalizations": ["trim", "lowercase"], "valueMap": {}, "authorityDomain": "authentication", "conflictPolicy": "prefer_authority"}
+      ],
+      "targetIdentity": ["profile_id"],
+      "idempotencyPath": "$.assertion_id",
+      "eventTimePath": "$.event_time",
+      "observedTimePath": "$.observed_time",
+      "authority": "synthetic_claimant",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "on_issue",
+      "replayable": true
+    },
+    {
+      "id": "document_evidence_extract_v1",
+      "mappingVersion": "1.0.0",
+      "sourceType": "document_extraction",
+      "sourceLocator": "synthetic://evidence/pdf",
+      "sourceSchemaVersion": "document-extract-v1",
+      "object": "evidence_document",
+      "fieldMappings": [
+        {"sourcePath": "$.evidence_key", "targetProperty": "evidence_id", "required": true, "normalizations": ["trim", "uppercase"], "valueMap": {}, "authorityDomain": "evidence", "conflictPolicy": "preserve_all"},
+        {"sourcePath": "$.profile_key", "targetProperty": "profile_id", "required": true, "normalizations": ["trim", "uppercase"], "valueMap": {}, "authorityDomain": "identity", "conflictPolicy": "require_review"},
+        {"sourcePath": "$.document_type", "targetProperty": "evidence_type", "required": true, "normalizations": ["trim", "lowercase"], "valueMap": {}, "authorityDomain": "evidence", "conflictPolicy": "preserve_all"},
+        {"sourcePath": "$.extracted_fact", "targetProperty": "extracted_fact", "required": true, "normalizations": ["trim", "collapse_whitespace"], "valueMap": {}, "authorityDomain": "document_extraction", "conflictPolicy": "require_review"},
+        {"sourcePath": "$.received_at", "targetProperty": "received_at", "required": true, "normalizations": ["iso_date"], "valueMap": {}, "authorityDomain": "evidence", "conflictPolicy": "preserve_all"}
+      ],
+      "targetIdentity": ["evidence_id"],
+      "idempotencyPath": "$.document_hash",
+      "eventTimePath": "$.received_at",
+      "observedTimePath": "$.observed_time",
+      "authority": "synthetic_document_pipeline",
+      "riskTier": "high",
+      "reviewStatus": "accepted",
+      "driftPolicy": "quarantine",
+      "lateArrivalPolicy": "quarantine",
+      "humanCheckpoint": "always",
+      "replayable": true
+    }
+  ],
+  "authorityModel": [
+    {"domain": "identity", "authority": "source_specific_and_human_reviewed", "status": "accepted", "scope": "No source may silently promote an identity assertion."},
+    {"domain": "earnings", "authority": "synthetic_earnings_system", "status": "accepted", "scope": "Earnings facts retain source and period provenance."},
+    {"domain": "document_extraction", "authority": "human_reviewer", "status": "accepted", "scope": "Machine extraction is a proposal until a human disposition is recorded."}
+  ],
+  "eventTypes": [
+    {"id": "source_record_observed", "source": "integration_hub", "createsOrUpdates": "party", "humanCheckpoint": "on_issue"},
+    {"id": "evidence_review_requested", "source": "workflow_router", "createsOrUpdates": "work_item", "humanCheckpoint": "required"}
+  ],
+  "reasoningFunctions": [
+    {"id": "propose_entity_link", "input": "source identity assertions and candidate entities", "output": "reversible ranked candidate proposal", "humanCheckpoint": "required_on_ambiguity"},
+    {"id": "route_review_work", "input": "mapping, access, or identity receipt", "output": "human work-item proposal", "humanCheckpoint": "human owns final disposition"}
+  ],
+  "extensions": {
+    "dataPolicy": {
+      "defaultAccess": "deny",
+      "productionDataAllowed": false,
+      "syntheticOnly": true
+    }
+  }
+}

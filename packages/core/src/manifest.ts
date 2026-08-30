@@ -81,10 +81,30 @@ export interface OntologyPackCanonicalLink {
   use: string;
 }
 
+export type OntologyPackSourceNormalization =
+  | "trim"
+  | "collapse_whitespace"
+  | "lowercase"
+  | "uppercase"
+  | "digits_only"
+  | "iso_date";
+
+export interface OntologyPackSourceFieldMapping {
+  sourcePath: string;
+  targetProperty: string;
+  required: boolean;
+  normalizations: OntologyPackSourceNormalization[];
+  valueMap: JsonObject;
+  authorityDomain: string;
+  conflictPolicy: "preserve_all" | "prefer_authority" | "require_review";
+}
+
 export interface OntologyPackSourceMapping {
   id: string;
+  mappingVersion?: string;
   sourceType: string;
   sourceLocator: string;
+  sourceSchemaVersion?: string;
   fields: string;
   sheet: string;
   range: string;
@@ -92,9 +112,18 @@ export interface OntologyPackSourceMapping {
   object: string;
   properties: string;
   transform: string;
+  fieldMappings?: OntologyPackSourceFieldMapping[];
+  targetIdentity?: string[];
+  idempotencyPath?: string;
+  eventTimePath?: string;
+  observedTimePath?: string;
   authority: string;
   riskTier: string;
   reviewStatus: string;
+  driftPolicy?: "reject" | "quarantine" | "allow_with_review";
+  lateArrivalPolicy?: "reject" | "quarantine" | "accept_with_review";
+  humanCheckpoint?: "always" | "on_issue" | "none";
+  replayable?: boolean;
 }
 
 export interface OntologyPackAuthorityRule {
@@ -539,8 +568,14 @@ export function parseOntologyPackManifest(
     sourceMappings: readRecordArray(value.sourceMappings)
       .map((item) => ({
         id: readString(item.id),
+        ...(Object.hasOwn(item, "mappingVersion")
+          ? { mappingVersion: readString(item.mappingVersion) }
+          : {}),
         sourceType: readString(item.sourceType),
         sourceLocator: readString(item.sourceLocator),
+        ...(Object.hasOwn(item, "sourceSchemaVersion")
+          ? { sourceSchemaVersion: readString(item.sourceSchemaVersion) }
+          : {}),
         fields: readString(item.fields),
         sheet: readString(item.sheet),
         range: readString(item.range),
@@ -548,9 +583,88 @@ export function parseOntologyPackManifest(
         object: readString(item.object),
         properties: readString(item.properties),
         transform: readString(item.transform),
+        ...(Object.hasOwn(item, "fieldMappings")
+          ? {
+              fieldMappings: readRecordArray(item.fieldMappings)
+                .map((field) => ({
+                  sourcePath: readString(field.sourcePath),
+                  targetProperty: readString(field.targetProperty),
+                  required: readBoolean(field.required),
+                  normalizations: readStringArray(field.normalizations).filter(
+                    (
+                      normalization
+                    ): normalization is OntologyPackSourceNormalization =>
+                      [
+                        "trim",
+                        "collapse_whitespace",
+                        "lowercase",
+                        "uppercase",
+                        "digits_only",
+                        "iso_date",
+                      ].includes(normalization)
+                  ),
+                  valueMap: readJsonObject(field.valueMap),
+                  authorityDomain: readString(field.authorityDomain),
+                  conflictPolicy: ([
+                    "preserve_all",
+                    "prefer_authority",
+                    "require_review",
+                  ].includes(readString(field.conflictPolicy))
+                    ? readString(field.conflictPolicy)
+                    : "preserve_all") as OntologyPackSourceFieldMapping["conflictPolicy"],
+                }))
+                .filter((field) => field.sourcePath && field.targetProperty),
+            }
+          : {}),
+        ...(Object.hasOwn(item, "targetIdentity")
+          ? { targetIdentity: readStringArray(item.targetIdentity) }
+          : {}),
+        ...(Object.hasOwn(item, "idempotencyPath")
+          ? { idempotencyPath: readString(item.idempotencyPath) }
+          : {}),
+        ...(Object.hasOwn(item, "eventTimePath")
+          ? { eventTimePath: readString(item.eventTimePath) }
+          : {}),
+        ...(Object.hasOwn(item, "observedTimePath")
+          ? { observedTimePath: readString(item.observedTimePath) }
+          : {}),
         authority: readString(item.authority),
         riskTier: readString(item.riskTier),
         reviewStatus: readString(item.reviewStatus),
+        ...(Object.hasOwn(item, "driftPolicy")
+          ? {
+              driftPolicy: ([
+                "reject",
+                "quarantine",
+                "allow_with_review",
+              ].includes(readString(item.driftPolicy))
+                ? readString(item.driftPolicy)
+                : "quarantine") as OntologyPackSourceMapping["driftPolicy"],
+            }
+          : {}),
+        ...(Object.hasOwn(item, "lateArrivalPolicy")
+          ? {
+              lateArrivalPolicy: ([
+                "reject",
+                "quarantine",
+                "accept_with_review",
+              ].includes(readString(item.lateArrivalPolicy))
+                ? readString(item.lateArrivalPolicy)
+                : "quarantine") as OntologyPackSourceMapping["lateArrivalPolicy"],
+            }
+          : {}),
+        ...(Object.hasOwn(item, "humanCheckpoint")
+          ? {
+              humanCheckpoint: (["always", "on_issue", "none"].includes(
+                readString(item.humanCheckpoint)
+              )
+                ? readString(item.humanCheckpoint)
+                : "on_issue") as OntologyPackSourceMapping["humanCheckpoint"],
+            }
+          : {}),
+        ...(Object.hasOwn(item, "replayable")
+          ? { replayable: readBoolean(item.replayable) }
+          : {}),
       }))
       .filter((item) => item.id && item.object),
     authorityModel: readRecordArray(value.authorityModel)
