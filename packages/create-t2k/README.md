@@ -4,7 +4,7 @@ Create a runnable local T2K project with a synthetic ontology, accepted facts,
 a Decision Context, two executable policies, and disjoint replay evidence.
 
 ```bash
-npx create-t2k my-decision-loop
+npx create-t2k@latest my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -26,7 +26,14 @@ That command records authorization, execution receipts, observations, computed
 rewards, held-out evaluation, independent promotion, and exact rollback in the
 open reference runtime.
 
-To expose the same local semantic operations to an MCP host, add:
+In the unreleased template, stop the local containers without deleting
+lifecycle data with `npm run db:down`. Use the explicitly destructive `npm run
+db:reset` only when you intend to delete the disposable local database volume.
+These safer database commands are implemented on unreleased `main`; the current
+npm `latest` template still uses its original lifecycle cleanup command.
+
+To expose ontology validation, compilation, policy execution, replay, and
+reward evaluation to an MCP host, add:
 
 ```json
 {
@@ -46,7 +53,7 @@ before enabling database access or agent writes.
 Use `--no-install` to generate files without running `npm install`:
 
 ```bash
-npx create-t2k my-decision-loop --no-install
+npx create-t2k@latest my-decision-loop --no-install
 ```
 
 The command refuses to write into a non-empty directory. Node.js 20.10 or newer

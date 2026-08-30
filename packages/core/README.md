@@ -10,6 +10,8 @@ The package includes:
 - deterministic pack compilation, dependency resolution, and semantic hashes;
 - governed source mapping with drift, lateness, idempotency, and field-level
   provenance receipts;
+- deterministic, non-mutating canonical-record reconciliation with explicit
+  authority priorities and preserved candidate evidence;
 - reversible, evidence-scored entity-resolution proposals;
 - deterministic purpose-limited access evaluation and disclosure receipts;
 - an executable reference rule policy and held-out replay evaluator;
@@ -21,6 +23,11 @@ The package includes:
 The package uses Ajv for exact schema execution and `pg` for the optional local
 lifecycle. Node.js 20.10 or newer is required. The compiler and Postgres
 subpaths are server-side modules.
+
+Source mapping, canonical reconciliation, entity resolution, and purpose-access
+APIs described below are implemented on unreleased `main` and will be included
+in the next `@t2kai/core` release. The current npm `latest` package is `0.2.0`
+and does not yet contain those exports.
 
 ## Compile Packs Locally
 
@@ -140,6 +147,57 @@ An idempotency key alone is not proof of replay. `duplicate` status requires a
 prior accepted record with the same key, source payload hash, and canonical
 output hash. A changed payload or output under a reused key is rejected; a
 key-only lookup is quarantined because equivalence cannot be verified.
+
+### Reconcile canonical records without losing evidence
+
+This API is implemented on unreleased `main` and will be included in the next
+`@t2kai/core` package release.
+
+`reconcileCanonicalRecords` turns independently mapped records for the same
+canonical object and exact identity into a deterministic, non-mutating
+proposal. It checks each receipt's internal hash consistency, canonical-output
+binding, field-to-receipt provenance binding, and identity-to-field agreement
+before considering a value. Rejected, quarantined, duplicate, structurally
+invalid, or internally contradictory inputs cannot win.
+
+```ts
+import { reconcileCanonicalRecords } from "@t2kai/core";
+
+const proposal = reconcileCanonicalRecords({
+  results: [masterRecord, secondaryRecord],
+  authorityPolicy: {
+    policyId: "agency.party-authority",
+    policyVersion: "1.0.0",
+    prioritiesByDomain: {
+      identity: ["agency-master", "claimant-assertion"],
+    },
+  },
+});
+
+if (proposal.status === "rejected") {
+  throw new Error("Canonical evidence failed integrity or identity checks");
+}
+if (proposal.humanReviewRequired) {
+  queueForReview(proposal);
+}
+```
+
+Equal semantic values are coalesced while retaining every source receipt and
+field provenance. Conflicting `preserve_all` values remain as candidates with
+no invented winner. `require_review` conflicts remain unresolved.
+`prefer_authority` selects a value only when one candidate is backed by the
+unique highest-ranked `authorityRef` in the declared authority domain; missing
+or tied rankings route to review. Mixed conflict policies, object or identity
+mismatches, and integrity failures reject the proposal.
+
+The authority policy and result are hash-addressed for deterministic
+self-consistency, not cryptographic authenticity. `authorityRef` is still a
+caller assertion, and an untrusted caller can recompute an unkeyed hash. A
+production application must authenticate sources, use registry-, signature-,
+or equivalent trust evidence where required, govern the policy, persist the
+evidence, and record any human disposition. The proposal does not mutate source
+records, merge entities, or promote a value to accepted truth; all alternatives
+remain present for downstream disposition.
 
 `resolveEntityCandidates` separately produces a reversible entity-link
 proposal. Weighted identifier rules, required identifiers, automatic and

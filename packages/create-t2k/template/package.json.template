@@ -10,7 +10,8 @@
     "start": "node src/run.mjs",
     "check": "node src/run.mjs",
     "db:up": "docker compose up -d --wait",
-    "db:down": "docker compose down -v",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v",
     "lifecycle": "node src/lifecycle.mjs"
   },
   "dependencies": {

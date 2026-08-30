@@ -50,8 +50,11 @@ test("scaffolds the complete local decision project", async (context) => {
   );
   assert.equal(manifest.name, "harborlight-demo");
   assert.equal(manifest.dependencies["@t2kai/core"], "^0.2.0");
+  assert.equal(manifest.scripts["db:down"], "docker compose down");
+  assert.equal(manifest.scripts["db:reset"], "docker compose down -v");
   assert.match(output.join(""), /human must still authorize/i);
   assert.match(output.join(""), /persisted closed loop/i);
+  assert.match(output.join(""), /db:reset.*delete its volume/i);
 });
 
 test("refuses to overwrite a non-empty directory", async (context) => {

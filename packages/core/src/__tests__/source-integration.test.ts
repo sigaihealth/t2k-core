@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { compareCanonicalStrings, semanticHash } from "../compiler.js";
 import type { OntologyPackSourceMapping } from "../manifest.js";
 import {
+  type CanonicalAuthorityPolicy,
   executeSourceMapping,
+  type ExecuteSourceMappingResult,
   type FederatedSourceEnvelope,
+  reconcileCanonicalRecords,
   resolveEntityCandidates,
 } from "../source-integration.js";
 
@@ -114,6 +117,86 @@ function envelope(
     contentHash: semanticHash(payload),
     ...overrides,
   };
+}
+
+const reconciliationAuthorityPolicy: CanonicalAuthorityPolicy = {
+  policyId: "benefits:canonical-authority",
+  policyVersion: "1.0.0",
+  prioritiesByDomain: {
+    claimant_identity: ["authority:master", "authority:secondary"],
+  },
+};
+
+function reconciliationResult(input: {
+  recordKey: string;
+  authorityRef: string;
+  displayName: string;
+  conflictPolicy: "preserve_all" | "prefer_authority" | "require_review";
+  externalId?: string;
+  objectRef?: string;
+  driftPolicy?: "reject" | "quarantine" | "allow_with_review";
+  sourceSchemaVersion?: string;
+  extraPayload?: Record<string, string>;
+  acceptedResult?: ExecuteSourceMappingResult;
+  authorityDomain?: string;
+  humanCheckpoint?: "always" | "on_issue" | "none";
+}): ExecuteSourceMappingResult {
+  const identityField = sourceMapping.fieldMappings!.find(
+    (field) => field.targetProperty === "benefits:person.external_id"
+  )!;
+  const nameField = sourceMapping.fieldMappings!.find(
+    (field) => field.targetProperty === "benefits:person.display_name"
+  )!;
+  const mapping: OntologyPackSourceMapping = {
+    ...structuredClone(sourceMapping),
+    object: input.objectRef ?? sourceMapping.object,
+    driftPolicy: input.driftPolicy ?? sourceMapping.driftPolicy,
+    humanCheckpoint: input.humanCheckpoint ?? sourceMapping.humanCheckpoint,
+    fieldMappings: [
+      structuredClone(identityField),
+      {
+        ...structuredClone(nameField),
+        authorityDomain: input.authorityDomain ?? nameField.authorityDomain,
+        conflictPolicy: input.conflictPolicy,
+      },
+    ],
+    targetIdentity: ["benefits:person.external_id"],
+  };
+  const payload = {
+    messageId: input.recordKey,
+    eventTime: "2026-08-29T10:00:00-07:00",
+    observedTime: "2026-08-29T10:00:05-07:00",
+    externalId: input.externalId ?? "AB-123",
+    fullName: input.displayName,
+    ...input.extraPayload,
+  };
+  return executeSourceMapping({
+    mapping,
+    envelope: envelope(payload, {
+      sourceSystem: `source:${input.recordKey}`,
+      sourceLocator: `source:${input.recordKey}/record`,
+      sourceRecordKey: input.recordKey,
+      sourceSchemaVersion: input.sourceSchemaVersion ?? "1.0.0",
+      authorityRef: input.authorityRef,
+    }),
+    acceptedIdempotencyRecords: input.acceptedResult
+      ? [
+          {
+            idempotencyKey: input.acceptedResult.receipt.idempotencyKey,
+            sourcePayloadHash: input.acceptedResult.receipt.sourcePayloadHash,
+            canonicalOutputHash:
+              input.acceptedResult.receipt.canonicalOutputHash,
+          },
+        ]
+      : undefined,
+  });
+}
+
+function rehashReconciliationResult(result: ExecuteSourceMappingResult) {
+  result.receipt.canonicalOutputHash = semanticHash(result.canonicalRecord);
+  const { receiptHash: _receiptHash, ...receiptWithoutHash } = result.receipt;
+  result.receipt.receiptHash = semanticHash(receiptWithoutHash);
+  return result;
 }
 
 describe("source integration", () => {
@@ -885,6 +968,935 @@ describe("source integration", () => {
           code: "unmapped_source_fields",
           severity: "error",
           message: expect.stringContaining("$.unexpected.secret"),
+        }),
+      ])
+    );
+  });
+});
+
+describe("canonical record reconciliation", () => {
+  function field(
+    proposal: ReturnType<typeof reconcileCanonicalRecords>,
+    propertyRef = "benefits:person.display_name"
+  ) {
+    return proposal.fields.find(
+      (candidate) => candidate.propertyRef === propertyRef
+    )!;
+  }
+
+  it("coalesces equal values with all provenance deterministically without mutating inputs", () => {
+    const master = reconciliationResult({
+      recordKey: "master-1",
+      authorityRef: "authority:master",
+      displayName: " Ada   Lovelace ",
+      conflictPolicy: "prefer_authority",
+    });
+    const secondary = reconciliationResult({
+      recordKey: "secondary-1",
+      authorityRef: "authority:secondary",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const input = {
+      results: [master, secondary],
+      authorityPolicy: structuredClone(reconciliationAuthorityPolicy),
+    };
+    const original = structuredClone(input);
+
+    const first = reconcileCanonicalRecords(input);
+    const reordered = reconcileCanonicalRecords({
+      ...input,
+      results: [...input.results].reverse(),
+    });
+
+    expect(first).toEqual(reordered);
+    expect(input).toEqual(original);
+    expect(first).toMatchObject({
+      proposalVersion: "t2k.canonical-reconciliation-proposal.v1",
+      status: "proposed",
+      objectRef: "benefits:person",
+      identity: { "benefits:person.external_id": "AB-123" },
+      policyId: reconciliationAuthorityPolicy.policyId,
+      policyVersion: reconciliationAuthorityPolicy.policyVersion,
+      policyHash: semanticHash(reconciliationAuthorityPolicy),
+      humanReviewRequired: false,
+      nonMutating: true,
+      alternativesPreserved: true,
+      issues: [],
+    });
+    expect(field(first)).toMatchObject({
+      status: "selected",
+      resolution: "single_value",
+      selectedValue: "Ada Lovelace",
+    });
+    expect(field(first).candidates).toHaveLength(1);
+    expect(field(first).candidates[0].evidence).toHaveLength(2);
+    expect(
+      field(first).candidates[0].evidence.map(
+        (evidence) => evidence.receiptAuthorityRef
+      )
+    ).toEqual(["authority:master", "authority:secondary"]);
+    expect(first.inputHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.proposalHash).toMatch(/^[a-f0-9]{64}$/);
+    const { proposalHash, ...proposalWithoutHash } = first;
+    expect(proposalHash).toBe(semanticHash(proposalWithoutHash));
+  });
+
+  it("rejects an invalid authority policy or an empty mapped-evidence set", () => {
+    const result = reconciliationResult({
+      recordKey: "invalid-policy",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const invalidPolicy = reconcileCanonicalRecords({
+      results: [result],
+      authorityPolicy: {
+        policyId: " ",
+        policyVersion: "1.0.0",
+        prioritiesByDomain: {},
+      },
+    });
+    const empty = reconcileCanonicalRecords({
+      results: [],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(invalidPolicy.status).toBe("rejected");
+    expect(invalidPolicy.fields.every((candidate) => candidate.selectedValue === null)).toBe(
+      true
+    );
+    expect(invalidPolicy.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_authority_policy" }),
+      ])
+    );
+    expect(empty).toMatchObject({
+      status: "rejected",
+      objectRef: "",
+      identity: {},
+      fields: [],
+      humanReviewRequired: true,
+    });
+    expect(empty.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "no_mapped_source_evidence" }),
+      ])
+    );
+  });
+
+  it("fails closed without throwing for malformed serialized shapes", () => {
+    const valid = reconciliationResult({
+      recordKey: "malformed-shape-control",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const malformedFieldRecord = structuredClone(valid.canonicalRecord) as unknown as {
+      objectRef: string;
+      identity: Record<string, unknown>;
+      fields: unknown[];
+    };
+    malformedFieldRecord.fields = [null];
+    const cases: Array<{
+      name: string;
+      input: unknown;
+      issueCode: string;
+    }> = [
+      {
+        name: "input",
+        input: null,
+        issueCode: "malformed_reconciliation_input",
+      },
+      {
+        name: "results",
+        input: {
+          results: null,
+          authorityPolicy: reconciliationAuthorityPolicy,
+        },
+        issueCode: "malformed_reconciliation_results",
+      },
+      {
+        name: "result",
+        input: {
+          results: [null],
+          authorityPolicy: reconciliationAuthorityPolicy,
+        },
+        issueCode: "malformed_source_result",
+      },
+      {
+        name: "receipt",
+        input: {
+          results: [{ receipt: null, canonicalRecord: valid.canonicalRecord }],
+          authorityPolicy: reconciliationAuthorityPolicy,
+        },
+        issueCode: "malformed_source_receipt",
+      },
+      {
+        name: "record",
+        input: {
+          results: [{ receipt: valid.receipt, canonicalRecord: null }],
+          authorityPolicy: reconciliationAuthorityPolicy,
+        },
+        issueCode: "malformed_canonical_record",
+      },
+      {
+        name: "field",
+        input: {
+          results: [
+            {
+              receipt: valid.receipt,
+              canonicalRecord: malformedFieldRecord,
+            },
+          ],
+          authorityPolicy: reconciliationAuthorityPolicy,
+        },
+        issueCode: "malformed_canonical_record",
+      },
+    ];
+
+    for (const item of cases) {
+      let proposal: ReturnType<typeof reconcileCanonicalRecords> | undefined;
+      expect(
+        () =>
+          (proposal = reconcileCanonicalRecords(
+            item.input as Parameters<typeof reconcileCanonicalRecords>[0]
+          )),
+        item.name
+      ).not.toThrow();
+      expect(proposal?.status, item.name).toBe("rejected");
+      expect(
+        proposal?.issues.some((issue) => issue.code === item.issueCode),
+        item.name
+      ).toBe(true);
+    }
+  });
+
+  it("rejects invalid authority-priority arrays", () => {
+    const result = reconciliationResult({
+      recordKey: "invalid-priorities",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const invalidPriorities: unknown[] = [
+      [],
+      ["authority:master", "authority:master"],
+      ["authority:master", 7],
+      [" "],
+    ];
+
+    for (const priorities of invalidPriorities) {
+      const proposal = reconcileCanonicalRecords({
+        results: [result],
+        authorityPolicy: {
+          ...reconciliationAuthorityPolicy,
+          prioritiesByDomain: {
+            claimant_identity: priorities,
+          },
+        } as CanonicalAuthorityPolicy,
+      });
+
+      expect(proposal.status).toBe("rejected");
+      expect(proposal.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "invalid_authority_priority" }),
+        ])
+      );
+      expect(
+        proposal.fields.every((candidate) => candidate.selectedValue === null)
+      ).toBe(true);
+    }
+  });
+
+  it("rejects cross-bound provenance forgery even after hashes are recomputed", () => {
+    type FieldProvenance =
+      ExecuteSourceMappingResult["canonicalRecord"]["fields"][number]["provenance"];
+    const mismatches: Array<{
+      name: string;
+      replacement: Partial<FieldProvenance>;
+    }> = [
+      { name: "sourceSystem", replacement: { sourceSystem: "forged:source" } },
+      {
+        name: "sourceLocator",
+        replacement: { sourceLocator: "forged://record" },
+      },
+      {
+        name: "sourceRecordKey",
+        replacement: { sourceRecordKey: "forged-record" },
+      },
+      {
+        name: "sourceSchemaVersion",
+        replacement: { sourceSchemaVersion: "9.9.9" },
+      },
+      {
+        name: "sourcePayloadHash",
+        replacement: { sourcePayloadHash: semanticHash("forged-payload") },
+      },
+      { name: "mappingId", replacement: { mappingId: "forged:mapping" } },
+      {
+        name: "mappingHash",
+        replacement: { mappingHash: semanticHash("forged-mapping") },
+      },
+      {
+        name: "eventTime",
+        replacement: { eventTime: "2026-08-30T17:00:00.000Z" },
+      },
+      {
+        name: "observedTime",
+        replacement: { observedTime: "2026-08-30T17:00:05.000Z" },
+      },
+      {
+        name: "authenticationState",
+        replacement: { authenticationState: "system_asserted" },
+      },
+      {
+        name: "authorityRef",
+        replacement: { authorityRef: "authority:forged" },
+      },
+      {
+        name: "dataClassification",
+        replacement: { dataClassification: "public" },
+      },
+      {
+        name: "purposeTags",
+        replacement: { purposeTags: ["forged_purpose"] },
+      },
+      {
+        name: "retentionPolicy",
+        replacement: { retentionPolicy: { schedule: "forged" } },
+      },
+    ];
+
+    for (const mismatch of mismatches) {
+      const forged = structuredClone(
+        reconciliationResult({
+          recordKey: `forged-${mismatch.name}`,
+          authorityRef: "authority:master",
+          displayName: "Ada Lovelace",
+          conflictPolicy: "prefer_authority",
+        })
+      );
+      const displayNameField = forged.canonicalRecord.fields.find(
+        (candidate) =>
+          candidate.propertyRef === "benefits:person.display_name"
+      )!;
+      Object.assign(displayNameField.provenance, mismatch.replacement);
+      rehashReconciliationResult(forged);
+
+      const proposal = reconcileCanonicalRecords({
+        results: [forged],
+        authorityPolicy: reconciliationAuthorityPolicy,
+      });
+
+      expect(proposal.status, mismatch.name).toBe("rejected");
+      expect(proposal.includedReceiptHashes, mismatch.name).toEqual([]);
+      expect(
+        proposal.issues.some(
+          (issue) => issue.code === "source_field_provenance_mismatch"
+        ),
+        mismatch.name
+      ).toBe(true);
+    }
+
+    const reorderedTags = structuredClone(
+      reconciliationResult({
+        recordKey: "semantic-purpose-tags",
+        authorityRef: "authority:master",
+        displayName: "Ada Lovelace",
+        conflictPolicy: "prefer_authority",
+      })
+    );
+    for (const candidate of reorderedTags.canonicalRecord.fields) {
+      candidate.provenance.purposeTags.reverse();
+    }
+    rehashReconciliationResult(reorderedTags);
+    expect(
+      reconcileCanonicalRecords({
+        results: [reorderedTags],
+        authorityPolicy: reconciliationAuthorityPolicy,
+      }).status
+    ).toBe("proposed");
+  });
+
+  it("requires exactly one identity field equal to each identity value", () => {
+    const identityProperty = "benefits:person.external_id";
+    const base = reconciliationResult({
+      recordKey: "identity-contract",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const missing = structuredClone(base);
+    missing.canonicalRecord.fields = missing.canonicalRecord.fields.filter(
+      (candidate) => candidate.propertyRef !== identityProperty
+    );
+    const duplicate = structuredClone(base);
+    duplicate.canonicalRecord.fields.push(
+      structuredClone(
+        duplicate.canonicalRecord.fields.find(
+          (candidate) => candidate.propertyRef === identityProperty
+        )!
+      )
+    );
+    const contradictory = structuredClone(base);
+    contradictory.canonicalRecord.fields.find(
+      (candidate) => candidate.propertyRef === identityProperty
+    )!.value = "OTHER-999";
+
+    for (const [result, issueCode] of [
+      [missing, "missing_canonical_identity_field"],
+      [duplicate, "duplicate_canonical_identity_field"],
+      [contradictory, "contradictory_canonical_identity_field"],
+    ] as const) {
+      rehashReconciliationResult(result);
+      const proposal = reconcileCanonicalRecords({
+        results: [result],
+        authorityPolicy: reconciliationAuthorityPolicy,
+      });
+
+      expect(proposal.status).toBe("rejected");
+      expect(proposal.includedReceiptHashes).toEqual([]);
+      expect(proposal.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: issueCode })])
+      );
+    }
+  });
+
+  it("rejects duplicate non-identity fields even after hashes are recomputed", () => {
+    const duplicate = structuredClone(
+      reconciliationResult({
+        recordKey: "duplicate-non-identity-field",
+        authorityRef: "authority:master",
+        displayName: "Ada Lovelace",
+        conflictPolicy: "preserve_all",
+      })
+    );
+    const displayNameField = duplicate.canonicalRecord.fields.find(
+      (candidate) => candidate.propertyRef === "benefits:person.display_name"
+    )!;
+    duplicate.canonicalRecord.fields.push({
+      ...structuredClone(displayNameField),
+      value: "Augusta Ada King",
+    });
+    rehashReconciliationResult(duplicate);
+
+    const proposal = reconcileCanonicalRecords({
+      results: [duplicate],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("rejected");
+    expect(proposal.includedReceiptHashes).toEqual([]);
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "duplicate_canonical_field",
+          propertyRef: "benefits:person.display_name",
+        }),
+      ])
+    );
+  });
+
+  it("preserves conflicting values without inventing a winner", () => {
+    const proposal = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "preserve-a",
+          authorityRef: "authority:master",
+          displayName: "Ada Lovelace",
+          conflictPolicy: "preserve_all",
+        }),
+        reconciliationResult({
+          recordKey: "preserve-b",
+          authorityRef: "authority:secondary",
+          displayName: "Augusta Ada King",
+          conflictPolicy: "preserve_all",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "proposed",
+      humanReviewRequired: false,
+    });
+    expect(field(proposal)).toMatchObject({
+      conflictPolicy: "preserve_all",
+      status: "preserved",
+      resolution: "preserve_all",
+      selectedValue: null,
+      selectedValueHash: null,
+    });
+    expect(field(proposal).candidates).toHaveLength(2);
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "conflicting_values_preserved",
+          severity: "warning",
+        }),
+      ])
+    );
+  });
+
+  it("routes require-review conflicts without selecting a value", () => {
+    const proposal = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "review-a",
+          authorityRef: "authority:master",
+          displayName: "Ada Lovelace",
+          conflictPolicy: "require_review",
+        }),
+        reconciliationResult({
+          recordKey: "review-b",
+          authorityRef: "authority:secondary",
+          displayName: "Augusta Ada King",
+          conflictPolicy: "require_review",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "needs_review",
+      humanReviewRequired: true,
+    });
+    expect(field(proposal)).toMatchObject({
+      conflictPolicy: "require_review",
+      status: "needs_review",
+      resolution: "unresolved",
+      selectedValue: null,
+    });
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "conflicting_values_require_review",
+          severity: "review",
+        }),
+      ])
+    );
+  });
+
+  it("selects only one value backed by the unique highest-ranked authority", () => {
+    const proposal = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "authority-secondary",
+          authorityRef: "authority:secondary",
+          displayName: "Secondary Name",
+          conflictPolicy: "prefer_authority",
+        }),
+        reconciliationResult({
+          recordKey: "authority-master",
+          authorityRef: "authority:master",
+          displayName: "Master Name",
+          conflictPolicy: "prefer_authority",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("proposed");
+    expect(field(proposal)).toMatchObject({
+      status: "selected",
+      resolution: "preferred_authority",
+      selectedValue: "Master Name",
+      selectedValueHash: semanticHash("Master Name"),
+    });
+    expect(field(proposal).candidates).toHaveLength(2);
+  });
+
+  it("leaves authority conflicts unresolved when priorities are missing or tied", () => {
+    const first = reconciliationResult({
+      recordKey: "missing-a",
+      authorityRef: "authority:master",
+      displayName: "Name A",
+      conflictPolicy: "prefer_authority",
+    });
+    const second = reconciliationResult({
+      recordKey: "missing-b",
+      authorityRef: "authority:secondary",
+      displayName: "Name B",
+      conflictPolicy: "prefer_authority",
+    });
+    const missing = reconcileCanonicalRecords({
+      results: [first, second],
+      authorityPolicy: {
+        ...reconciliationAuthorityPolicy,
+        prioritiesByDomain: {},
+      },
+    });
+    const tied = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "tie-a",
+          authorityRef: "authority:master",
+          displayName: "Name A",
+          conflictPolicy: "prefer_authority",
+        }),
+        reconciliationResult({
+          recordKey: "tie-b",
+          authorityRef: "authority:master",
+          displayName: "Name B",
+          conflictPolicy: "prefer_authority",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(field(missing).selectedValue).toBeNull();
+    expect(missing.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "missing_authority_priority" }),
+      ])
+    );
+    expect(field(tied).selectedValue).toBeNull();
+    expect(tied.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "authority_priority_tie" }),
+      ])
+    );
+    expect(missing.status).toBe("needs_review");
+    expect(tied.status).toBe("needs_review");
+  });
+
+  it("does not rank values across mixed authority domains", () => {
+    const proposal = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "mixed-domain-a",
+          authorityRef: "authority:master",
+          authorityDomain: "claimant_identity",
+          displayName: "Name A",
+          conflictPolicy: "prefer_authority",
+        }),
+        reconciliationResult({
+          recordKey: "mixed-domain-b",
+          authorityRef: "authority:secondary",
+          authorityDomain: "alternate_identity",
+          displayName: "Name B",
+          conflictPolicy: "prefer_authority",
+        }),
+      ],
+      authorityPolicy: {
+        ...reconciliationAuthorityPolicy,
+        prioritiesByDomain: {
+          claimant_identity: ["authority:master", "authority:secondary"],
+          alternate_identity: ["authority:secondary", "authority:master"],
+        },
+      },
+    });
+
+    expect(proposal.status).toBe("needs_review");
+    expect(field(proposal)).toMatchObject({
+      status: "needs_review",
+      resolution: "unresolved",
+      selectedValue: null,
+    });
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "mixed_authority_domains" }),
+      ])
+    );
+  });
+
+  it("leaves conflicts unresolved when no evidence has a ranked authority", () => {
+    const proposal = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "unranked-a",
+          authorityRef: "authority:unranked-a",
+          displayName: "Name A",
+          conflictPolicy: "prefer_authority",
+        }),
+        reconciliationResult({
+          recordKey: "unranked-b",
+          authorityRef: "authority:unranked-b",
+          displayName: "Name B",
+          conflictPolicy: "prefer_authority",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("needs_review");
+    expect(field(proposal).selectedValue).toBeNull();
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "no_ranked_authority_evidence" }),
+      ])
+    );
+  });
+
+  it("preserves upstream review obligations on mapped evidence", () => {
+    const upstreamReview = reconciliationResult({
+      recordKey: "upstream-review",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+      humanCheckpoint: "always",
+    });
+    expect(upstreamReview.receipt).toMatchObject({
+      status: "mapped",
+      humanReviewRequired: true,
+    });
+
+    const proposal = reconcileCanonicalRecords({
+      results: [upstreamReview],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "needs_review",
+      humanReviewRequired: true,
+    });
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "mapped_source_evidence_requires_review",
+        }),
+      ])
+    );
+  });
+
+  it("fails closed when source mappings assert mixed conflict policies", () => {
+    const proposal = reconcileCanonicalRecords({
+      results: [
+        reconciliationResult({
+          recordKey: "mixed-a",
+          authorityRef: "authority:master",
+          displayName: "Name A",
+          conflictPolicy: "preserve_all",
+        }),
+        reconciliationResult({
+          recordKey: "mixed-b",
+          authorityRef: "authority:secondary",
+          displayName: "Name B",
+          conflictPolicy: "require_review",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("rejected");
+    expect(proposal.humanReviewRequired).toBe(true);
+    expect(proposal.fields.every((candidate) => candidate.selectedValue === null)).toBe(
+      true
+    );
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "mixed_field_conflict_policies",
+          severity: "error",
+        }),
+      ])
+    );
+  });
+
+  it("verifies receipt and canonical-output hashes before using evidence", () => {
+    const valid = reconciliationResult({
+      recordKey: "integrity-valid",
+      authorityRef: "authority:master",
+      displayName: "Valid Name",
+      conflictPolicy: "prefer_authority",
+    });
+    const canonicalTamper = structuredClone(
+      reconciliationResult({
+        recordKey: "integrity-canonical",
+        authorityRef: "authority:secondary",
+        displayName: "Original Name",
+        conflictPolicy: "prefer_authority",
+      })
+    );
+    canonicalTamper.canonicalRecord.fields[0].value = "Tampered Name";
+    const receiptTamper = structuredClone(
+      reconciliationResult({
+        recordKey: "integrity-receipt",
+        authorityRef: "authority:secondary",
+        displayName: "Receipt Name",
+        conflictPolicy: "prefer_authority",
+      })
+    );
+    receiptTamper.receipt.humanReviewRequired =
+      !receiptTamper.receipt.humanReviewRequired;
+
+    const proposal = reconcileCanonicalRecords({
+      results: [valid, canonicalTamper, receiptTamper],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("rejected");
+    expect(proposal.includedReceiptHashes).toEqual([valid.receipt.receiptHash]);
+    expect(proposal.fields.every((candidate) => candidate.selectedValue === null)).toBe(
+      true
+    );
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_canonical_output_hash" }),
+        expect.objectContaining({ code: "invalid_source_receipt_hash" }),
+      ])
+    );
+  });
+
+  it("requires exact canonical object and identity agreement", () => {
+    const base = reconciliationResult({
+      recordKey: "agreement-base",
+      authorityRef: "authority:master",
+      displayName: "Name A",
+      conflictPolicy: "prefer_authority",
+    });
+    const objectMismatch = reconcileCanonicalRecords({
+      results: [
+        base,
+        reconciliationResult({
+          recordKey: "agreement-object",
+          authorityRef: "authority:secondary",
+          displayName: "Name B",
+          conflictPolicy: "prefer_authority",
+          objectRef: "benefits:other-person",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+    const identityMismatch = reconcileCanonicalRecords({
+      results: [
+        base,
+        reconciliationResult({
+          recordKey: "agreement-identity",
+          authorityRef: "authority:secondary",
+          displayName: "Name B",
+          conflictPolicy: "prefer_authority",
+          externalId: "OTHER-999",
+        }),
+      ],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(objectMismatch).toMatchObject({ status: "rejected", objectRef: "" });
+    expect(objectMismatch.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "canonical_object_mismatch" }),
+      ])
+    );
+    expect(identityMismatch).toMatchObject({ status: "rejected", identity: {} });
+    expect(identityMismatch.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "canonical_identity_mismatch" }),
+      ])
+    );
+    expect(
+      [...objectMismatch.fields, ...identityMismatch.fields].every(
+        (candidate) => candidate.selectedValue === null
+      )
+    ).toBe(true);
+  });
+
+  it("excludes quarantined and rejected inputs so they cannot win", () => {
+    const accepted = reconciliationResult({
+      recordKey: "accepted-evidence",
+      authorityRef: "authority:secondary",
+      displayName: "Accepted Name",
+      conflictPolicy: "prefer_authority",
+    });
+    const quarantined = reconciliationResult({
+      recordKey: "quarantined-evidence",
+      authorityRef: "authority:master",
+      displayName: "Quarantined Name",
+      conflictPolicy: "prefer_authority",
+      sourceSchemaVersion: "2.0.0",
+    });
+    const rejected = reconciliationResult({
+      recordKey: "rejected-evidence",
+      authorityRef: "authority:master",
+      displayName: "Rejected Name",
+      conflictPolicy: "prefer_authority",
+      sourceSchemaVersion: "2.0.0",
+      driftPolicy: "reject",
+    });
+    expect(quarantined.receipt.status).toBe("quarantined");
+    expect(rejected.receipt.status).toBe("rejected");
+
+    const proposal = reconcileCanonicalRecords({
+      results: [accepted, quarantined, rejected],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("needs_review");
+    expect(proposal.includedReceiptHashes).toEqual([accepted.receipt.receiptHash]);
+    expect(field(proposal)).toMatchObject({
+      selectedValue: "Accepted Name",
+      resolution: "single_value",
+    });
+    expect(field(proposal).candidates).toHaveLength(1);
+    expect(proposal.issues.filter((issue) => issue.code === "unaccepted_source_evidence_excluded")).toHaveLength(
+      2
+    );
+  });
+
+  it("excludes exact duplicate receipts with a deterministic warning", () => {
+    const first = reconciliationResult({
+      recordKey: "duplicate-evidence",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const duplicate = reconciliationResult({
+      recordKey: "duplicate-evidence",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+      acceptedResult: first,
+    });
+    expect(duplicate.receipt.status).toBe("duplicate");
+
+    const proposal = reconcileCanonicalRecords({
+      results: [duplicate, first],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal.status).toBe("proposed");
+    expect(proposal.humanReviewRequired).toBe(false);
+    expect(proposal.includedReceiptHashes).toEqual([first.receipt.receiptHash]);
+    expect(field(proposal).candidates[0].evidence).toHaveLength(1);
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "duplicate_source_evidence_excluded",
+          severity: "warning",
+        }),
+      ])
+    );
+  });
+
+  it("counts a repeated mapped receipt only once", () => {
+    const mapped = reconciliationResult({
+      recordKey: "repeated-mapped-receipt",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+
+    const proposal = reconcileCanonicalRecords({
+      results: [mapped, mapped],
+      authorityPolicy: reconciliationAuthorityPolicy,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "proposed",
+      humanReviewRequired: false,
+      includedReceiptHashes: [mapped.receipt.receiptHash],
+    });
+    expect(proposal.inputReceiptHashes).toEqual([
+      mapped.receipt.receiptHash,
+      mapped.receipt.receiptHash,
+    ]);
+    expect(field(proposal).candidates[0].evidence).toHaveLength(1);
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "repeated_input_receipt_excluded",
+          severity: "warning",
         }),
       ])
     );
