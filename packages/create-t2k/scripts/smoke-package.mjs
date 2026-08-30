@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -80,6 +81,20 @@ try {
     fs.access(path.join(generatedPath, "compose.yml")),
     fs.access(path.join(generatedPath, "src/lifecycle.mjs")),
   ]);
+  const [generatedCompose, generatedReadme, generatedRunner, lifecycleRunner] =
+    await Promise.all([
+      fs.readFile(path.join(generatedPath, "compose.yml"), "utf8"),
+      fs.readFile(path.join(generatedPath, "README.md"), "utf8"),
+      fs.readFile(path.join(generatedPath, "src/run.mjs"), "utf8"),
+      fs.readFile(path.join(generatedPath, "src/lifecycle.mjs"), "utf8"),
+    ]);
+  assert.match(generatedCompose, /127\.0\.0\.1:55432:5432/);
+  assert.doesNotMatch(generatedCompose, /- "55432:5432"/);
+  assert.match(generatedCompose, /disposable local-only quickstart credentials/i);
+  assert.match(generatedReadme, /`t2k` username and\s+`t2k` password.*local-only/is);
+  assert.match(generatedReadme, /`npm install` first only if.*`--no-install`/is);
+  assert.match(generatedRunner, /Invalid JSON in \$\{relativePath\}/);
+  assert.match(lifecycleRunner, /Invalid JSON in \$\{relativePath\}/);
 
   const integrationPath = path.join(smokeRoot, "generated-integration-hub");
   execFileSync(
@@ -104,6 +119,27 @@ try {
     fs.access(path.join(integrationPath, "source-records/registry-beta.json")),
     fs.access(path.join(integrationPath, "src/run.mjs")),
   ]);
+  const [integrationReadme, integrationRunner] = await Promise.all([
+    fs.readFile(path.join(integrationPath, "README.md"), "utf8"),
+    fs.readFile(path.join(integrationPath, "src/run.mjs"), "utf8"),
+  ]);
+  assert.match(integrationReadme, /source envelope as immutable/i);
+  assert.match(integrationReadme, /bump\s+`policyVersion`/i);
+  assert.match(integrationReadme, /bump its `mappingVersion`/i);
+  assert.match(integrationReadme, /also bump `ontologyVersion`/i);
+  assert.match(integrationReadme, /`npm install` first only if.*`--no-install`/is);
+  assert.match(integrationRunner, /canonicalRecord: result\.canonicalRecord/);
+  assert.match(integrationRunner, /packageVersion: corePackageManifest\.version/);
+  assert.match(integrationRunner, /proposal: reconciliation/);
+  assert.match(
+    integrationRunner,
+    /reverseInputOrderProposal: reverseOrderReconciliation/
+  );
+  assert.match(
+    integrationRunner,
+    /comparisonScope: "forward_and_reverse_input_order_only"/
+  );
+  assert.doesNotMatch(integrationRunner, /deterministicAcrossInputOrder/);
   integrationManifest.dependencies["@t2kai/core"] = `file:${coreTarball}`;
   await fs.writeFile(
     path.join(integrationPath, "package.json"),

@@ -48,6 +48,7 @@ export interface PurposeLimitedAccessReceipt {
     | "explicit_deny"
     | "explicit_allow"
     | "default_deny"
+    | "invalid_request"
     | "invalid_request_time"
     | "invalid_policy_rule"
     | "invalid_policy_time";
@@ -112,7 +113,8 @@ function validSelector(value: unknown) {
   );
 }
 
-function validRuleShape(rule: PurposeLimitedAccessRule) {
+function validRuleShape(rule: unknown): rule is PurposeLimitedAccessRule {
+  if (!isRecord(rule)) return false;
   const selectors = [
     rule.roles,
     rule.purposes,
@@ -135,6 +137,63 @@ function validRuleShape(rule: PurposeLimitedAccessRule) {
       (selector) => selector === undefined || validSelector(selector)
     ) &&
     attributesValid
+  );
+}
+
+function nonblankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function validRequestStringArray(value: unknown) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item) => nonblankString(item))
+  );
+}
+
+function validRequestShape(
+  request: unknown
+): request is PurposeLimitedAccessRequest {
+  if (!isRecord(request)) return false;
+  return (
+    [
+      request.requestKey,
+      request.principalId,
+      request.purpose,
+      request.subjectRef,
+      request.subjectRelationship,
+      request.jurisdiction,
+      request.requestedAt,
+    ].every(nonblankString) &&
+    validRequestStringArray(request.principalRoles) &&
+    validRequestStringArray(request.dataCategories) &&
+    validRequestStringArray(request.sourceRecordRefs) &&
+    (request.attributes === undefined ||
+      (isRecord(request.attributes) &&
+        Object.values(request.attributes).every(isJsonValue)))
+  );
+}
+
+function unknownString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function receiptStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string")
+        .sort(compareCanonicalStrings)
+    : [];
+}
+
+function sortUnknownArray(value: unknown) {
+  if (!Array.isArray(value)) return value;
+  if (value.every((item) => typeof item === "string")) {
+    return [...value].sort(compareCanonicalStrings);
+  }
+  return [...value].sort((left, right) =>
+    compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
   );
 }
 
@@ -191,20 +250,42 @@ export function evaluatePurposeLimitedAccess(
   policy: PurposeLimitedAccessPolicy,
   request: PurposeLimitedAccessRequest
 ): PurposeLimitedAccessReceipt {
-  const requestedAt = parseExplicitTimestamp(request.requestedAt);
-  const sortedRules = [...policy.rules].sort(
+  const rawPolicy: unknown = policy;
+  const policyRecord = isRecord(rawPolicy) ? rawPolicy : {};
+  const rawRequest: unknown = request;
+  const requestRecord = isRecord(rawRequest) ? rawRequest : {};
+  const rawRules = policyRecord.rules;
+  const sortedRules = (Array.isArray(rawRules) ? [...rawRules] : []).sort(
     (left, right) =>
-      compareCanonicalStrings(left.ruleId, right.ruleId) ||
+      compareCanonicalStrings(
+        isRecord(left) && typeof left.ruleId === "string" ? left.ruleId : "",
+        isRecord(right) && typeof right.ruleId === "string" ? right.ruleId : ""
+      ) ||
       compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
   );
-  const policyHash = semanticHash({ ...policy, rules: sortedRules });
+  const policyHash = semanticHash(
+    isRecord(rawPolicy) && Array.isArray(rawRules)
+      ? { ...rawPolicy, rules: sortedRules }
+      : rawPolicy
+  );
   const normalizedRequest = {
-    ...request,
-    principalRoles: [...request.principalRoles].sort(compareCanonicalStrings),
-    dataCategories: [...request.dataCategories].sort(compareCanonicalStrings),
-    sourceRecordRefs: [...request.sourceRecordRefs].sort(compareCanonicalStrings),
+    ...requestRecord,
+    principalRoles: sortUnknownArray(requestRecord.principalRoles),
+    dataCategories: sortUnknownArray(requestRecord.dataCategories),
+    sourceRecordRefs: sortUnknownArray(requestRecord.sourceRecordRefs),
   };
   const requestHash = semanticHash(normalizedRequest);
+  const requestValid = validRequestShape(rawRequest);
+  const requestedAt = requestValid
+    ? parseExplicitTimestamp(request.requestedAt)
+    : null;
+  const policyId = unknownString(policyRecord.policyId);
+  const policyVersion = unknownString(policyRecord.policyVersion);
+  const policyShapeValid =
+    nonblankString(policyRecord.policyId) &&
+    nonblankString(policyRecord.policyVersion) &&
+    policyRecord.defaultEffect === "deny" &&
+    Array.isArray(rawRules);
 
   let decision: PurposeLimitedAccessReceipt["decision"] = "deny";
   let reasonCode: PurposeLimitedAccessReceipt["reasonCode"] = "default_deny";
@@ -212,6 +293,7 @@ export function evaluatePurposeLimitedAccess(
   let matchedRuleId: string | null = null;
   const invalidShapeRule = sortedRules.find((rule) => !validRuleShape(rule));
   const invalidTimeRule = sortedRules.find((rule) => {
+    if (!validRuleShape(rule)) return false;
     const hasEffectiveFrom = rule.effectiveFrom !== undefined;
     const hasEffectiveTo = rule.effectiveTo !== undefined;
     const effectiveFrom =
@@ -232,28 +314,41 @@ export function evaluatePurposeLimitedAccess(
     );
   });
 
-  if (requestedAt === null) {
+  if (!requestValid) {
+    reasonCode = "invalid_request";
+    reason = "The access request is malformed or incomplete; access fails closed.";
+  } else if (requestedAt === null) {
     reasonCode = "invalid_request_time";
     reason = "The request time is invalid; access fails closed.";
   } else if (
-    policy.defaultEffect !== "deny" ||
+    !policyShapeValid ||
     invalidShapeRule
   ) {
     reasonCode = "invalid_policy_rule";
     reason = invalidShapeRule
-      ? `Policy rule ${invalidShapeRule.ruleId || "<missing>"} is malformed; access fails closed.`
-      : "The policy default is not deny; access fails closed.";
-    matchedRuleId = invalidShapeRule?.ruleId || null;
+      ? `Policy rule ${
+          isRecord(invalidShapeRule) &&
+          typeof invalidShapeRule.ruleId === "string" &&
+          invalidShapeRule.ruleId
+            ? invalidShapeRule.ruleId
+            : "<missing>"
+        } is malformed; access fails closed.`
+      : "The policy identity, rules, or mandatory default deny is invalid; access fails closed.";
+    matchedRuleId =
+      isRecord(invalidShapeRule) && typeof invalidShapeRule.ruleId === "string"
+        ? invalidShapeRule.ruleId || null
+        : null;
   } else if (invalidTimeRule) {
     reasonCode = "invalid_policy_time";
     reason = `Policy rule ${invalidTimeRule.ruleId} has an invalid effective time; access fails closed.`;
     matchedRuleId = invalidTimeRule.ruleId;
   } else {
-    const explicitDeny = sortedRules.find(
+    const validRules = sortedRules.filter(validRuleShape);
+    const explicitDeny = validRules.find(
       (rule) =>
         rule.effect === "deny" && ruleMatches(rule, request, requestedAt)
     );
-    const explicitAllow = sortedRules.find(
+    const explicitAllow = validRules.find(
       (rule) =>
         rule.effect === "allow" && ruleMatches(rule, request, requestedAt)
     );
@@ -276,19 +371,19 @@ export function evaluatePurposeLimitedAccess(
     reasonCode,
     reason,
     matchedRuleId,
-    policyId: policy.policyId,
-    policyVersion: policy.policyVersion,
+    policyId,
+    policyVersion,
     policyHash,
-    requestKey: request.requestKey,
+    requestKey: unknownString(requestRecord.requestKey),
     requestHash,
-    principalId: request.principalId,
-    purpose: request.purpose,
-    subjectRef: request.subjectRef,
-    subjectRelationship: request.subjectRelationship,
-    dataCategories: [...request.dataCategories].sort(compareCanonicalStrings),
-    jurisdiction: request.jurisdiction,
-    requestedAt: request.requestedAt,
-    sourceRecordRefs: [...request.sourceRecordRefs].sort(compareCanonicalStrings),
+    principalId: unknownString(requestRecord.principalId),
+    purpose: unknownString(requestRecord.purpose),
+    subjectRef: unknownString(requestRecord.subjectRef),
+    subjectRelationship: unknownString(requestRecord.subjectRelationship),
+    dataCategories: receiptStringArray(requestRecord.dataCategories),
+    jurisdiction: unknownString(requestRecord.jurisdiction),
+    requestedAt: unknownString(requestRecord.requestedAt),
+    sourceRecordRefs: receiptStringArray(requestRecord.sourceRecordRefs),
   };
 
   return {

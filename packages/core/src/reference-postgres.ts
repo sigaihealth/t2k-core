@@ -19,6 +19,7 @@ import {
   REFERENCE_LIFECYCLE_SCHEMA_SQL,
   REFERENCE_LIFECYCLE_SCHEMA_VERSION,
 } from "./reference-postgres-schema.js";
+import { parseExplicitTimestamp } from "./reference-time.js";
 import type {
   DecisionLearningContract,
   DecisionLearningMode,
@@ -654,10 +655,13 @@ function requireProbability(value: number | undefined) {
 
 function requireTimestamp(value: string, label: string) {
   const timestamp = requireText(value, label);
-  if (Number.isNaN(new Date(timestamp).getTime())) {
-    throw new ReferenceLifecycleValidationError(`${label} must be an ISO timestamp.`);
+  const parsed = parseExplicitTimestamp(timestamp);
+  if (parsed === null) {
+    throw new ReferenceLifecycleValidationError(
+      `${label} must be a valid timestamp with an explicit UTC or numeric offset.`
+    );
   }
-  return new Date(timestamp).toISOString();
+  return new Date(parsed).toISOString();
 }
 
 function requireUniqueIds(values: string[], label: string) {
@@ -1909,6 +1913,40 @@ export class PostgresReferenceLifecycle {
     actorInput: ReferenceLifecycleActor
   ) {
     const actor = requireActor(actorInput);
+    const episodeKey = requireText(episodeId, "episodeId");
+    const receiptKey = requireText(input.receiptKey, "receiptKey");
+    const idempotencyKey = requireText(input.idempotencyKey, "idempotencyKey");
+    const connectorRef = requireText(input.connectorRef, "connectorRef");
+    const externalTransactionId =
+      input.externalTransactionId === undefined ||
+      input.externalTransactionId === null
+        ? null
+        : requireText(input.externalTransactionId, "externalTransactionId");
+    if (!(["succeeded", "failed", "unknown"] as const).includes(input.outcome)) {
+      throw new ReferenceLifecycleValidationError(
+        "outcome must be succeeded, failed, or unknown."
+      );
+    }
+    if (
+      !(["pending", "reconciled", "mismatch"] as const).includes(
+        input.reconciliationStatus
+      )
+    ) {
+      throw new ReferenceLifecycleValidationError(
+        "reconciliationStatus must be pending, reconciled, or mismatch."
+      );
+    }
+    const requestHash = requireText(input.requestHash, "requestHash");
+    const responseHash = requireText(input.responseHash, "responseHash");
+    const response = immutableJsonObjectSnapshot(input.response ?? {}, "response");
+    const receiptError = immutableJsonObjectSnapshot(input.error ?? {}, "error");
+    const rollbackContract = immutableJsonObjectSnapshot(
+      input.rollbackContract ?? {},
+      "rollbackContract"
+    );
+    const receivedAt = input.receivedAt
+      ? requireTimestamp(input.receivedAt, "receivedAt")
+      : null;
     return this.transaction(async (client) => {
       const episode = await one<{
         id: string;
@@ -1924,18 +1962,97 @@ export class PostgresReferenceLifecycle {
            ON authorizations.id = episodes.authorized_decision_id
          WHERE episodes.id = $1
          FOR UPDATE OF episodes`,
-        [requireText(episodeId, "episodeId")],
+        [episodeKey],
         "Decision Episode not found."
       );
+      const existingResult = await client.query<{
+        id: string;
+        decision_episode_id: string;
+        receipt_key: string;
+        idempotency_key: string;
+        connector_ref: string;
+        external_transaction_id: string | null;
+        action: string;
+        outcome: string;
+        request_hash: string;
+        response_hash: string;
+        response: JsonObject;
+        error: JsonObject;
+        rollback_contract: JsonObject;
+        reconciliation_status: string;
+        recorded_by_actor_type: ReferenceActorType;
+        recorded_by_actor_id: string;
+        received_at: Date | string;
+      }>(
+        `SELECT *
+         FROM t2k_reference.execution_receipts
+         WHERE receipt_key = $1 OR idempotency_key = $2
+         ORDER BY id
+         FOR UPDATE`,
+        [receiptKey, idempotencyKey]
+      );
+      if (existingResult.rows.length > 1) {
+        throw new ReferenceLifecycleConflictError(
+          "receiptKey and idempotencyKey are already bound to different execution receipts."
+        );
+      }
+      const existing = existingResult.rows[0];
+      if (existing) {
+        const existingReceivedAt =
+          existing.received_at instanceof Date
+            ? existing.received_at.toISOString()
+            : new Date(existing.received_at).toISOString();
+        const expectedBody = {
+          decisionEpisodeId: episode.id,
+          receiptKey,
+          idempotencyKey,
+          connectorRef,
+          externalTransactionId,
+          action: episode.selected_action,
+          outcome: input.outcome,
+          requestHash,
+          responseHash,
+          response,
+          error: receiptError,
+          rollbackContract,
+          reconciliationStatus: input.reconciliationStatus,
+          recordedByActorType: actor.actorType,
+          recordedByActorId: actor.actorId,
+          ...(receivedAt === null ? {} : { receivedAt }),
+        };
+        const existingBody = {
+          decisionEpisodeId: existing.decision_episode_id,
+          receiptKey: existing.receipt_key,
+          idempotencyKey: existing.idempotency_key,
+          connectorRef: existing.connector_ref,
+          externalTransactionId: existing.external_transaction_id,
+          action: existing.action,
+          outcome: existing.outcome,
+          requestHash: existing.request_hash,
+          responseHash: existing.response_hash,
+          response: existing.response,
+          error: existing.error,
+          rollbackContract: existing.rollback_contract,
+          reconciliationStatus: existing.reconciliation_status,
+          recordedByActorType: existing.recorded_by_actor_type,
+          recordedByActorId: existing.recorded_by_actor_id,
+          ...(receivedAt === null ? {} : { receivedAt: existingReceivedAt }),
+        };
+        if (semanticHash(existingBody) !== semanticHash(expectedBody)) {
+          throw new ReferenceLifecycleConflictError(
+            "receiptKey or idempotencyKey is already bound to a different execution receipt."
+          );
+        }
+        return camelizeRow<ReferenceExecutionReceiptRecord>(existing);
+      }
       if (episode.lifecycle_status !== "open") {
         throw new ReferenceLifecycleConflictError(
           "Execution receipts can only be recorded for an open episode."
         );
       }
-      const rollbackContract = input.rollbackContract ?? {};
       if (
         episode.external_effect &&
-        Object.keys(requireObject(rollbackContract, "rollbackContract")).length === 0
+        Object.keys(rollbackContract).length === 0
       ) {
         throw new ReferenceLifecycleValidationError(
           "External-effect execution requires a rollbackContract."
@@ -1955,23 +2072,21 @@ export class PostgresReferenceLifecycle {
           [
             id,
             episode.id,
-            requireText(input.receiptKey, "receiptKey"),
-            requireText(input.idempotencyKey, "idempotencyKey"),
-            requireText(input.connectorRef, "connectorRef"),
-            input.externalTransactionId?.trim() || null,
+            receiptKey,
+            idempotencyKey,
+            connectorRef,
+            externalTransactionId,
             episode.selected_action,
             input.outcome,
-            requireText(input.requestHash, "requestHash"),
-            requireText(input.responseHash, "responseHash"),
-            json(input.response ?? {}),
-            json(input.error ?? {}),
+            requestHash,
+            responseHash,
+            json(response),
+            json(receiptError),
             json(rollbackContract),
             input.reconciliationStatus,
             actor.actorType,
             actor.actorId,
-            input.receivedAt
-              ? requireTimestamp(input.receivedAt, "receivedAt")
-              : new Date().toISOString(),
+            receivedAt ?? new Date().toISOString(),
           ]
         );
         await this.appendEvent(client, {
@@ -2008,6 +2123,32 @@ export class PostgresReferenceLifecycle {
     actorInput: ReferenceLifecycleActor
   ) {
     const actor = requireActor(actorInput);
+    const episodeKey = requireText(episodeId, "episodeId");
+    const measureRef = requireText(input.measureRef, "measureRef");
+    const observationWindow = requireText(
+      input.observationWindow,
+      "observationWindow"
+    );
+    const observedValue = JSON.parse(json(input.observedValue)) as JsonValue;
+    const baselineValue =
+      input.baselineValue === undefined || input.baselineValue === null
+        ? null
+        : (JSON.parse(json(input.baselineValue)) as JsonValue);
+    const sourceRefs = normalizeOptionalUniqueIds(input.sourceRefs, "sourceRefs");
+    const provenance = immutableJsonObjectSnapshot(
+      input.provenance ?? {},
+      "provenance"
+    );
+    const confidence = input.attributionConfidence ?? null;
+    if (
+      confidence !== null &&
+      (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
+    ) {
+      throw new ReferenceLifecycleValidationError(
+        "attributionConfidence must be between 0 and 1."
+      );
+    }
+    const observedAt = requireTimestamp(input.observedAt, "observedAt");
     return this.transaction(async (client) => {
       const episode = await one<{
         id: string;
@@ -2019,18 +2160,8 @@ export class PostgresReferenceLifecycle {
          FROM t2k_reference.decision_episodes
          WHERE id = $1
          FOR UPDATE`,
-        [requireText(episodeId, "episodeId")],
+        [episodeKey],
         "Decision Episode not found."
-      );
-      if (episode.lifecycle_status !== "open") {
-        throw new ReferenceLifecycleConflictError(
-          "Observations can only be recorded for an open episode."
-        );
-      }
-      const measureRef = requireText(input.measureRef, "measureRef");
-      const observationWindow = requireText(
-        input.observationWindow,
-        "observationWindow"
       );
       const dimension = episode.learning_contract.rewardSpec.find(
         (item) =>
@@ -2042,25 +2173,80 @@ export class PostgresReferenceLifecycle {
           "The measure and window are not declared by the frozen reward contract."
         );
       }
-      if (input.observedValue === undefined) {
-        throw new ReferenceLifecycleValidationError("observedValue is required.");
-      }
-      const sourceRefs = (input.sourceRefs ?? []).map((value, index) =>
-        requireText(value, `sourceRefs[${index}]`)
-      );
-      const provenance = input.provenance ?? {};
       if (sourceRefs.length === 0 && Object.keys(provenance).length === 0) {
         throw new ReferenceLifecycleValidationError(
           "Observation requires sourceRefs or structured provenance."
         );
       }
-      const confidence = input.attributionConfidence ?? null;
-      if (
-        confidence !== null &&
-        (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
-      ) {
-        throw new ReferenceLifecycleValidationError(
-          "attributionConfidence must be between 0 and 1."
+      const unit =
+        input.unit === undefined || input.unit === null
+          ? dimension.unit || null
+          : requireText(input.unit, "unit");
+      const existingResult = await client.query<{
+        id: string;
+        decision_episode_id: string;
+        measure_ref: string;
+        observed_value: JsonValue;
+        baseline_value: JsonValue | null;
+        unit: string | null;
+        observation_window: string;
+        source_refs: string[];
+        provenance: JsonObject;
+        attribution_confidence: number | null;
+        recorded_by_actor_type: ReferenceActorType;
+        recorded_by_actor_id: string;
+        observed_at: Date | string;
+        created_at: Date | string;
+      }>(
+        `SELECT *
+         FROM t2k_reference.episode_observations
+         WHERE decision_episode_id = $1
+           AND measure_ref = $2
+           AND observation_window = $3
+           AND observed_at = $4
+         ORDER BY id
+         FOR UPDATE`,
+        [episode.id, measureRef, observationWindow, observedAt]
+      );
+      const expectedBody = {
+        decisionEpisodeId: episode.id,
+        measureRef,
+        observedValue,
+        baselineValue,
+        unit,
+        observationWindow,
+        sourceRefs,
+        provenance,
+        attributionConfidence: confidence,
+        recordedByActorType: actor.actorType,
+        recordedByActorId: actor.actorId,
+        observedAt,
+      };
+      for (const existing of existingResult.rows) {
+        const existingBody = {
+          decisionEpisodeId: existing.decision_episode_id,
+          measureRef: existing.measure_ref,
+          observedValue: existing.observed_value,
+          baselineValue: existing.baseline_value,
+          unit: existing.unit,
+          observationWindow: existing.observation_window,
+          sourceRefs: existing.source_refs,
+          provenance: existing.provenance,
+          attributionConfidence: existing.attribution_confidence,
+          recordedByActorType: existing.recorded_by_actor_type,
+          recordedByActorId: existing.recorded_by_actor_id,
+          observedAt:
+            existing.observed_at instanceof Date
+              ? existing.observed_at.toISOString()
+              : new Date(existing.observed_at).toISOString(),
+        };
+        if (semanticHash(existingBody) === semanticHash(expectedBody)) {
+          return camelizeRow<ReferenceObservationRecord>(existing);
+        }
+      }
+      if (episode.lifecycle_status !== "open") {
+        throw new ReferenceLifecycleConflictError(
+          "Observations can only be recorded for an open episode."
         );
       }
       const id = randomUUID();
@@ -2076,18 +2262,16 @@ export class PostgresReferenceLifecycle {
           id,
           episode.id,
           measureRef,
-          json(input.observedValue),
-          input.baselineValue === undefined || input.baselineValue === null
-            ? null
-            : json(input.baselineValue),
-          input.unit?.trim() || dimension.unit || null,
+          json(observedValue),
+          baselineValue === null ? null : json(baselineValue),
+          unit,
           observationWindow,
           json(sourceRefs),
           json(provenance),
           confidence,
           actor.actorType,
           actor.actorId,
-          requireTimestamp(input.observedAt, "observedAt"),
+          observedAt,
         ]
       );
       await this.appendEvent(client, {

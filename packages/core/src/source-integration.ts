@@ -227,38 +227,50 @@ function readPath(payload: JsonObject, path: string): JsonValue | undefined {
   return current;
 }
 
-function normalizeIsoDate(value: JsonValue): JsonValue {
-  if (typeof value !== "string") return value;
-  const timestamp = parseDateOnlyUtc(value) ?? asTimestamp(value);
-  return timestamp !== null && Number.isFinite(timestamp)
-    ? new Date(timestamp).toISOString()
-    : value;
-}
-
 function normalizeValue(
   value: JsonValue,
   normalizations: OntologyPackSourceNormalization[]
-): JsonValue {
-  return normalizations.reduce<JsonValue>((current, normalization) => {
+):
+  | { valid: true; value: JsonValue }
+  | { valid: false; normalization: OntologyPackSourceNormalization } {
+  let current = value;
+  for (const normalization of normalizations) {
     switch (normalization) {
       case "trim":
-        return typeof current === "string" ? current.trim() : current;
+        current = typeof current === "string" ? current.trim() : current;
+        break;
       case "collapse_whitespace":
-        return typeof current === "string"
+        current = typeof current === "string"
           ? current.replace(/\s+/g, " ").trim()
           : current;
+        break;
       case "lowercase":
-        return typeof current === "string" ? current.toLowerCase() : current;
+        current =
+          typeof current === "string" ? current.toLowerCase() : current;
+        break;
       case "uppercase":
-        return typeof current === "string" ? current.toUpperCase() : current;
+        current =
+          typeof current === "string" ? current.toUpperCase() : current;
+        break;
       case "digits_only":
-        return typeof current === "string"
+        current = typeof current === "string"
           ? current.replace(/[^0-9]/g, "")
           : current;
-      case "iso_date":
-        return normalizeIsoDate(current);
+        break;
+      case "iso_date": {
+        if (typeof current !== "string") {
+          return { valid: false, normalization };
+        }
+        const timestamp = parseDateOnlyUtc(current) ?? asTimestamp(current);
+        if (timestamp === null || !Number.isFinite(timestamp)) {
+          return { valid: false, normalization };
+        }
+        current = new Date(timestamp).toISOString();
+        break;
+      }
     }
-  }, value);
+  }
+  return { valid: true, value: current };
 }
 
 function applyValueMap(value: JsonValue, valueMap: JsonObject): JsonValue {
@@ -423,8 +435,141 @@ function sourcePathCovered(
 export function executeSourceMapping(
   input: ExecuteSourceMappingInput
 ): ExecuteSourceMappingResult {
-  const { mapping, envelope } = input;
+  const rawInput: unknown = input;
+  const inputRecord = isRecord(rawInput) ? rawInput : {};
+  const rawMapping = inputRecord.mapping;
+  const mapping = (isRecord(rawMapping) ? rawMapping : {}) as unknown as
+    OntologyPackSourceMapping;
+  const rawEnvelope = inputRecord.envelope;
+  const envelopeRecord = isRecord(rawEnvelope) ? rawEnvelope : {};
+  const rawPayload = envelopeRecord.payload;
+  const payloadValid = isJsonObjectShape(rawPayload);
+  const payload: JsonObject = payloadValid ? rawPayload : {};
+  const rawPurposeTags = envelopeRecord.purposeTags;
+  const purposeTagsValid =
+    Array.isArray(rawPurposeTags) &&
+    rawPurposeTags.every(
+      (tag) => typeof tag === "string" && tag.trim().length > 0
+    );
+  const purposeTags: string[] = purposeTagsValid
+    ? rawPurposeTags.filter((tag): tag is string => typeof tag === "string")
+    : [];
+  const rawRetentionPolicy = envelopeRecord.retentionPolicy;
+  const retentionPolicyValid = isJsonObjectShape(rawRetentionPolicy);
+  const retentionPolicy: JsonObject = retentionPolicyValid
+    ? rawRetentionPolicy
+    : {};
+  const authenticationStateValid = SOURCE_AUTHENTICATION_STATES.includes(
+    envelopeRecord.authenticationState as SourceAuthenticationState
+  );
+  const envelopeStringFields = [
+    "sourceSystem",
+    "sourceLocator",
+    "sourceRecordKey",
+    "sourceSchemaVersion",
+    "eventTime",
+    "observedTime",
+    "authorityRef",
+    "dataClassification",
+  ] as const;
+  const envelopeStringsValid = envelopeStringFields.every(
+    (field) =>
+      typeof envelopeRecord[field] === "string" &&
+      envelopeRecord[field].trim().length > 0
+  );
+  const contentHashValid =
+    envelopeRecord.contentHash === undefined ||
+    (typeof envelopeRecord.contentHash === "string" &&
+      /^[a-f0-9]{64}$/.test(envelopeRecord.contentHash));
+  const envelope: FederatedSourceEnvelope = {
+    sourceSystem:
+      typeof envelopeRecord.sourceSystem === "string"
+        ? envelopeRecord.sourceSystem
+        : "",
+    sourceLocator:
+      typeof envelopeRecord.sourceLocator === "string"
+        ? envelopeRecord.sourceLocator
+        : "",
+    sourceRecordKey:
+      typeof envelopeRecord.sourceRecordKey === "string"
+        ? envelopeRecord.sourceRecordKey
+        : "",
+    sourceSchemaVersion:
+      typeof envelopeRecord.sourceSchemaVersion === "string"
+        ? envelopeRecord.sourceSchemaVersion
+        : "",
+    payload,
+    eventTime:
+      typeof envelopeRecord.eventTime === "string"
+        ? envelopeRecord.eventTime
+        : "",
+    observedTime:
+      typeof envelopeRecord.observedTime === "string"
+        ? envelopeRecord.observedTime
+        : "",
+    authenticationState: authenticationStateValid
+      ? (envelopeRecord.authenticationState as SourceAuthenticationState)
+      : "unknown",
+    authorityRef:
+      typeof envelopeRecord.authorityRef === "string"
+        ? envelopeRecord.authorityRef
+        : "",
+    dataClassification:
+      typeof envelopeRecord.dataClassification === "string"
+        ? envelopeRecord.dataClassification
+        : "",
+    purposeTags: [...purposeTags],
+    retentionPolicy,
+    ...(typeof envelopeRecord.contentHash === "string"
+      ? { contentHash: envelopeRecord.contentHash }
+      : {}),
+  };
   const issues: SourceMappingIssue[] = [];
+  if (!isRecord(rawEnvelope) || !envelopeStringsValid || !payloadValid) {
+    issues.push(
+      issue(
+        "invalid_source_envelope",
+        "error",
+        "The source envelope requires nonblank identity, locator, schema, time, authority, and classification fields plus a JSON object payload."
+      )
+    );
+  }
+  if (!authenticationStateValid) {
+    issues.push(
+      issue(
+        "invalid_source_authentication_state",
+        "error",
+        "The source authentication state must be authenticated, unauthenticated, system_asserted, or unknown."
+      )
+    );
+  }
+  if (!purposeTagsValid) {
+    issues.push(
+      issue(
+        "invalid_source_purpose_tags",
+        "error",
+        "Source purpose tags must be an array containing only nonblank strings."
+      )
+    );
+  }
+  if (!retentionPolicyValid) {
+    issues.push(
+      issue(
+        "invalid_source_retention_policy",
+        "error",
+        "The source retention policy must be a JSON object."
+      )
+    );
+  }
+  if (!contentHashValid) {
+    issues.push(
+      issue(
+        "invalid_source_content_hash",
+        "error",
+        "A supplied source content hash must be a lowercase SHA-256 digest."
+      )
+    );
+  }
   const fieldMappings = sourceFieldMappings(mapping);
   const rawFieldMappingCount = Array.isArray(mapping.fieldMappings)
     ? mapping.fieldMappings.length
@@ -551,6 +696,7 @@ export function executeSourceMapping(
       )
     );
   }
+  const usableControlPaths = new Map<string, string>();
   for (const [controlName, controlPath] of [
     ["idempotencyPath", mapping.idempotencyPath],
     ["eventTimePath", mapping.eventTimePath],
@@ -558,16 +704,20 @@ export function executeSourceMapping(
   ] as const) {
     if (
       controlPath !== undefined &&
-      (!sourcePathIsSafe(controlPath) || controlPath === "$")
+      (typeof controlPath !== "string" ||
+        !sourcePathIsSafe(controlPath) ||
+        controlPath === "$")
     ) {
       issues.push(
         issue(
           "invalid_control_source_path",
           "error",
           `${controlName} must select one explicit safe source path below the payload root.`,
-          controlPath
+          typeof controlPath === "string" ? controlPath : null
         )
       );
+    } else if (typeof controlPath === "string") {
+      usableControlPaths.set(controlName, controlPath);
     }
   }
   if (!mapping.driftPolicy || !DRIFT_POLICIES.has(mapping.driftPolicy)) {
@@ -693,18 +843,21 @@ export function executeSourceMapping(
     );
   }
 
-  const mappedEventTime = mapping.eventTimePath
-    ? readPath(envelope.payload, mapping.eventTimePath)
+  const idempotencyPath = usableControlPaths.get("idempotencyPath");
+  const eventTimePath = usableControlPaths.get("eventTimePath");
+  const observedTimePath = usableControlPaths.get("observedTimePath");
+  const mappedEventTime = eventTimePath
+    ? readPath(envelope.payload, eventTimePath)
     : undefined;
-  const mappedObservedTime = mapping.observedTimePath
-    ? readPath(envelope.payload, mapping.observedTimePath)
+  const mappedObservedTime = observedTimePath
+    ? readPath(envelope.payload, observedTimePath)
     : undefined;
-  const effectiveEventTime = mapping.eventTimePath
+  const effectiveEventTime = eventTimePath
     ? typeof mappedEventTime === "string"
       ? mappedEventTime
       : ""
     : envelope.eventTime;
-  const effectiveObservedTime = mapping.observedTimePath
+  const effectiveObservedTime = observedTimePath
     ? typeof mappedObservedTime === "string"
       ? mappedObservedTime
       : ""
@@ -719,11 +872,13 @@ export function executeSourceMapping(
     );
   }
 
+  const latestAcceptedEventTime = inputRecord.latestAcceptedEventTime;
   const hasLatestAcceptedEventTime =
-    input.latestAcceptedEventTime !== undefined &&
-    input.latestAcceptedEventTime !== null;
+    latestAcceptedEventTime !== undefined && latestAcceptedEventTime !== null;
   const latestAccepted = hasLatestAcceptedEventTime
-    ? asTimestamp(input.latestAcceptedEventTime as string)
+    ? typeof latestAcceptedEventTime === "string"
+      ? asTimestamp(latestAcceptedEventTime)
+      : null
     : null;
   if (hasLatestAcceptedEventTime && latestAccepted === null) {
     issues.push(
@@ -749,12 +904,14 @@ export function executeSourceMapping(
       issue(
         "late_arrival",
         severity,
-        `Event time ${effectiveEventTime} precedes the accepted watermark ${input.latestAcceptedEventTime}.`
+        `Event time ${effectiveEventTime} precedes the accepted watermark ${String(
+          latestAcceptedEventTime
+        )}.`
       )
     );
   }
 
-  if (mapping.replayable === true && !mapping.idempotencyPath) {
+  if (mapping.replayable === true && !idempotencyPath) {
     issues.push(
       issue(
         "missing_idempotency_path",
@@ -763,8 +920,8 @@ export function executeSourceMapping(
       )
     );
   }
-  const explicitIdempotencyValue = mapping.idempotencyPath
-    ? readPath(envelope.payload, mapping.idempotencyPath)
+  const explicitIdempotencyValue = idempotencyPath
+    ? readPath(envelope.payload, idempotencyPath)
     : envelope.sourceRecordKey;
   if (!isStableIdempotencyValue(explicitIdempotencyValue)) {
     issues.push(
@@ -772,7 +929,7 @@ export function executeSourceMapping(
         "missing_idempotency_value",
         "error",
         "Governed source mappings require a nonblank, finite, stable idempotency value.",
-        mapping.idempotencyPath || null
+        idempotencyPath ?? null
       )
     );
   }
@@ -785,12 +942,10 @@ export function executeSourceMapping(
   });
   const acceptedFieldPaths = fieldMappings.map((field) => field.sourcePath);
   const acceptedControlPaths = [
-    mapping.idempotencyPath,
-    mapping.eventTimePath,
-    mapping.observedTimePath,
-  ].filter(
-    (path): path is string => typeof path === "string" && sourcePathIsSafe(path)
-  );
+    idempotencyPath,
+    eventTimePath,
+    observedTimePath,
+  ].filter((path): path is string => typeof path === "string");
   const unknownSourcePaths = sourceLeafPaths(envelope.payload)
     .filter(
       (path) =>
@@ -834,10 +989,20 @@ export function executeSourceMapping(
       continue;
     }
 
-    const normalized = applyValueMap(
-      normalizeValue(sourceValue, field.normalizations),
-      field.valueMap
-    );
+    const normalization = normalizeValue(sourceValue, field.normalizations);
+    if (!normalization.valid) {
+      issues.push(
+        issue(
+          "invalid_iso_date_value",
+          "error",
+          `Source field ${field.sourcePath} is not a valid calendar date or explicit-offset timestamp required by iso_date normalization.`,
+          field.sourcePath,
+          field.targetProperty
+        )
+      );
+      continue;
+    }
+    const normalized = applyValueMap(normalization.value, field.valueMap);
     fields.push({
       propertyRef: field.targetProperty,
       value: cloneJson(normalized),
@@ -907,7 +1072,56 @@ export function executeSourceMapping(
     fields,
   };
   const canonicalOutputHash = semanticHash(canonicalRecord);
-  const priorRecords = (input.acceptedIdempotencyRecords ?? []).filter(
+  const rawAcceptedIdempotencyRecords = inputRecord.acceptedIdempotencyRecords;
+  const acceptedIdempotencyRecords = Array.isArray(
+    rawAcceptedIdempotencyRecords
+  )
+    ? rawAcceptedIdempotencyRecords.filter(
+        (record): record is AcceptedIdempotencyRecord =>
+          isRecord(record) &&
+          typeof record.idempotencyKey === "string" &&
+          SHA256_HEX.test(record.idempotencyKey) &&
+          typeof record.sourcePayloadHash === "string" &&
+          SHA256_HEX.test(record.sourcePayloadHash) &&
+          typeof record.canonicalOutputHash === "string" &&
+          SHA256_HEX.test(record.canonicalOutputHash)
+      )
+    : [];
+  if (
+    rawAcceptedIdempotencyRecords !== undefined &&
+    (!Array.isArray(rawAcceptedIdempotencyRecords) ||
+      acceptedIdempotencyRecords.length !==
+        rawAcceptedIdempotencyRecords.length)
+  ) {
+    issues.push(
+      issue(
+        "invalid_accepted_idempotency_evidence",
+        "error",
+        "Accepted idempotency evidence must contain complete lowercase SHA-256 key, payload, and output hashes."
+      )
+    );
+  }
+  const rawSeenIdempotencyKeys = inputRecord.seenIdempotencyKeys;
+  const seenIdempotencyKeys = Array.isArray(rawSeenIdempotencyKeys)
+    ? rawSeenIdempotencyKeys.filter(
+        (value): value is string =>
+          typeof value === "string" && SHA256_HEX.test(value)
+      )
+    : [];
+  if (
+    rawSeenIdempotencyKeys !== undefined &&
+    (!Array.isArray(rawSeenIdempotencyKeys) ||
+      seenIdempotencyKeys.length !== rawSeenIdempotencyKeys.length)
+  ) {
+    issues.push(
+      issue(
+        "invalid_seen_idempotency_keys",
+        "error",
+        "Seen idempotency keys must be lowercase SHA-256 digests."
+      )
+    );
+  }
+  const priorRecords = acceptedIdempotencyRecords.filter(
     (record) => record.idempotencyKey === idempotencyKey
   );
   const conflictingReplay = priorRecords.some(
@@ -926,7 +1140,7 @@ export function executeSourceMapping(
   const keyOnlyReplay =
     !exactReplay &&
     !conflictingReplay &&
-    new Set(input.seenIdempotencyKeys ?? []).has(idempotencyKey);
+    new Set(seenIdempotencyKeys).has(idempotencyKey);
   const duplicate = exactReplay || keyOnlyReplay || conflictingReplay;
   if (conflictingReplay) {
     issues.push(
@@ -1886,6 +2100,8 @@ export interface EntityResolutionDecision {
   inputHash: string;
   rulesHash: string;
   invalidRuleCount: number;
+  invalidThresholdCount?: number;
+  invalidInputCount?: number;
   thresholds: {
     automaticMatch: number;
     review: number;
@@ -1912,16 +2128,23 @@ function isUsableIdentifier(
   );
 }
 
-function validUnitThreshold(value: number | undefined, fallback: number) {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 1
-    ? value
-    : fallback;
+function isValidUnitThreshold(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= 1
+  );
 }
 
-function validEntityResolutionRule(rule: EntityResolutionRule) {
+function validEntityResolutionRule(
+  rule: unknown
+): rule is EntityResolutionRule {
   return (
+    isRecord(rule) &&
     typeof rule.identifier === "string" &&
     rule.identifier.trim().length > 0 &&
+    typeof rule.weight === "number" &&
     Number.isFinite(rule.weight) &&
     rule.weight > 0 &&
     (rule.requiredForAutomaticMatch === undefined ||
@@ -1938,16 +2161,24 @@ function validEntityResolutionRule(rule: EntityResolutionRule) {
 export function resolveEntityCandidates(
   input: EntityResolutionInput
 ): EntityResolutionDecision {
-  const normalizedInputRules = [...input.rules].sort(
+  const rawInput: unknown = input;
+  const inputRecord = isRecord(rawInput) ? rawInput : {};
+  const rawRules = inputRecord.rules;
+  const rawRuleArray = Array.isArray(rawRules) ? [...rawRules] : [];
+  const normalizedInputRules = rawRuleArray.sort(
     (left, right) =>
       compareCanonicalStrings(
-        typeof left.identifier === "string" ? left.identifier : "",
-        typeof right.identifier === "string" ? right.identifier : ""
+        isRecord(left) && typeof left.identifier === "string"
+          ? left.identifier
+          : "",
+        isRecord(right) && typeof right.identifier === "string"
+          ? right.identifier
+          : ""
       ) || compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
   );
-  const invalidRuleCount = normalizedInputRules.filter(
-    (rule) => !validEntityResolutionRule(rule)
-  ).length;
+  const invalidRuleCount =
+    normalizedInputRules.filter((rule) => !validEntityResolutionRule(rule))
+      .length + (Array.isArray(rawRules) ? 0 : 1);
   const rules = normalizedInputRules
     .filter(validEntityResolutionRule)
     .sort(
@@ -1956,16 +2187,45 @@ export function resolveEntityCandidates(
         compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
     );
   const totalWeight = rules.reduce((sum, rule) => sum + rule.weight, 0);
-  const candidates = input.candidates
-    .map((candidate) => {
+  const sourceEntityKey =
+    typeof inputRecord.sourceEntityKey === "string"
+      ? inputRecord.sourceEntityKey
+      : "";
+  const sourceIdentifiers = isJsonObjectShape(inputRecord.identifiers)
+    ? inputRecord.identifiers
+    : {};
+  const rawCandidates = inputRecord.candidates;
+  const candidateArray = Array.isArray(rawCandidates) ? [...rawCandidates] : [];
+  const structurallyInvalidCandidates = candidateArray.filter(
+    (candidate) =>
+      !isRecord(candidate) ||
+      typeof candidate.entityKey !== "string" ||
+      candidate.entityKey.trim().length === 0 ||
+      !isJsonObjectShape(candidate.identifiers)
+  ).length;
+  const invalidInputCount =
+    (isRecord(rawInput) ? 0 : 1) +
+    (typeof inputRecord.sourceEntityKey === "string" &&
+    inputRecord.sourceEntityKey.trim().length > 0
+      ? 0
+      : 1) +
+    (isJsonObjectShape(inputRecord.identifiers) ? 0 : 1) +
+    (Array.isArray(rawCandidates) ? 0 : 1) +
+    structurallyInvalidCandidates;
+  const candidates = candidateArray
+    .map((rawCandidate) => {
+      const candidate = isRecord(rawCandidate) ? rawCandidate : {};
+      const candidateIdentifiers = isJsonObjectShape(candidate.identifiers)
+        ? candidate.identifiers
+        : {};
       const matchedIdentifiers: string[] = [];
       const mismatchedIdentifiers: string[] = [];
       let matchedWeight = 0;
       let requiredMatchesSatisfied = true;
 
       for (const rule of rules) {
-        const sourceValue = input.identifiers[rule.identifier];
-        const candidateValue = candidate.identifiers[rule.identifier];
+        const sourceValue = sourceIdentifiers[rule.identifier];
+        const candidateValue = candidateIdentifiers[rule.identifier];
         const matched =
           isUsableIdentifier(sourceValue) &&
           isUsableIdentifier(candidateValue) &&
@@ -1984,7 +2244,8 @@ export function resolveEntityCandidates(
         typeof candidate.entityKey === "string" &&
         candidate.entityKey.trim().length > 0;
       return {
-        entityKey: candidate.entityKey,
+        entityKey:
+          typeof candidate.entityKey === "string" ? candidate.entityKey : "",
         score:
           candidateKeyValid && totalWeight > 0
             ? matchedWeight / totalWeight
@@ -2002,38 +2263,68 @@ export function resolveEntityCandidates(
         compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
     );
 
-  const automaticThreshold = validUnitThreshold(
-    input.automaticMatchThreshold,
-    0.9
-  );
-  const requestedReviewThreshold = validUnitThreshold(input.reviewThreshold, 0.5);
+  const rawAutomaticThreshold = inputRecord.automaticMatchThreshold;
+  const rawReviewThreshold = inputRecord.reviewThreshold;
+  const rawAmbiguityMargin = inputRecord.ambiguityMargin;
+  const automaticThreshold = isValidUnitThreshold(rawAutomaticThreshold)
+    ? rawAutomaticThreshold
+    : 0.9;
+  const requestedReviewThreshold = isValidUnitThreshold(rawReviewThreshold)
+    ? rawReviewThreshold
+    : 0.5;
   const reviewThreshold =
     requestedReviewThreshold <= automaticThreshold
       ? requestedReviewThreshold
       : Math.min(0.5, automaticThreshold);
-  const ambiguityMargin =
-    input.ambiguityMargin !== undefined &&
-    Number.isFinite(input.ambiguityMargin) &&
-    input.ambiguityMargin > 0 &&
-    input.ambiguityMargin <= 1
-      ? input.ambiguityMargin
-      : 0.1;
+  const ambiguityMargin = isValidUnitThreshold(rawAmbiguityMargin)
+    ? rawAmbiguityMargin
+    : 0.1;
+  const invalidThresholdCount =
+    (rawAutomaticThreshold !== undefined &&
+    !isValidUnitThreshold(rawAutomaticThreshold)
+      ? 1
+      : 0) +
+    (rawReviewThreshold !== undefined &&
+    !isValidUnitThreshold(rawReviewThreshold)
+      ? 1
+      : 0) +
+    (rawAmbiguityMargin !== undefined &&
+    !isValidUnitThreshold(rawAmbiguityMargin)
+      ? 1
+      : 0) +
+    (isValidUnitThreshold(rawAutomaticThreshold) &&
+    isValidUnitThreshold(rawReviewThreshold) &&
+    rawReviewThreshold > rawAutomaticThreshold
+      ? 1
+      : 0);
   const thresholds = {
     automaticMatch: automaticThreshold,
     review: reviewThreshold,
     ambiguityMargin,
   };
-  const normalizedCandidateEvidence = [...input.candidates].sort(
+  const normalizedCandidateEvidence = candidateArray.sort(
     (left, right) =>
-      compareCanonicalStrings(left.entityKey, right.entityKey) ||
+      compareCanonicalStrings(
+        isRecord(left) && typeof left.entityKey === "string"
+          ? left.entityKey
+          : "",
+        isRecord(right) && typeof right.entityKey === "string"
+          ? right.entityKey
+          : ""
+      ) ||
       compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
   );
-  const rulesHash = semanticHash(normalizedInputRules);
+  const normalizedRuleEvidence = Array.isArray(rawRules)
+    ? normalizedInputRules
+    : rawRules;
+  const rulesHash = semanticHash(normalizedRuleEvidence);
   const inputHash = semanticHash({
-    sourceEntityKey: input.sourceEntityKey,
-    identifiers: input.identifiers,
-    candidates: normalizedCandidateEvidence,
-    rules: normalizedInputRules,
+    sourceEntityKey: inputRecord.sourceEntityKey,
+    identifiers: inputRecord.identifiers,
+    candidates: Array.isArray(rawCandidates)
+      ? normalizedCandidateEvidence
+      : rawCandidates,
+    rules: normalizedRuleEvidence,
     thresholds,
   });
   const best = candidates[0] ?? null;
@@ -2051,8 +2342,8 @@ export function resolveEntityCandidates(
   if (
     best &&
     invalidRuleCount === 0 &&
-    typeof input.sourceEntityKey === "string" &&
-    input.sourceEntityKey.trim().length > 0 &&
+    invalidThresholdCount === 0 &&
+    invalidInputCount === 0 &&
     best.score >= automaticThreshold &&
     best.requiredMatchesSatisfied &&
     unambiguous
@@ -2064,14 +2355,26 @@ export function resolveEntityCandidates(
   } else if (best && best.score >= reviewThreshold) {
     status = "needs_review";
     targetEntityKey = best.entityKey;
-    rationale = invalidRuleCount > 0
-      ? "At least one entity-resolution rule is invalid; a candidate met the review threshold, but automatic matching is prohibited."
-      : "At least one candidate met the review threshold, but automatic merge conditions were not satisfied.";
+    rationale =
+      invalidThresholdCount > 0
+        ? "At least one entity-resolution threshold is invalid; a candidate met the review threshold, but automatic matching is prohibited."
+        : invalidRuleCount > 0
+          ? "At least one entity-resolution rule is invalid; a candidate met the review threshold, but automatic matching is prohibited."
+          : invalidInputCount > 0
+            ? "The entity-resolution input is malformed; a candidate met the review threshold, but automatic matching is prohibited."
+            : "At least one candidate met the review threshold, but automatic merge conditions were not satisfied.";
+  } else if (
+    invalidRuleCount > 0 ||
+    invalidThresholdCount > 0 ||
+    invalidInputCount > 0
+  ) {
+    rationale =
+      "Entity-resolution inputs or controls are invalid; automatic matching is prohibited and no candidate met the review threshold.";
   }
 
   const decisionWithoutHash = {
     status,
-    sourceEntityKey: input.sourceEntityKey,
+    sourceEntityKey,
     targetEntityKey,
     humanReviewRequired: status !== "matched",
     reversible: true as const,
@@ -2079,6 +2382,8 @@ export function resolveEntityCandidates(
     inputHash,
     rulesHash,
     invalidRuleCount,
+    ...(invalidThresholdCount > 0 ? { invalidThresholdCount } : {}),
+    ...(invalidInputCount > 0 ? { invalidInputCount } : {}),
     thresholds,
     rationale,
   };

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#102a43">
+    <meta
+      name="description"
+      content="A synthetic multi-agency integration hub powered by T2K Core."
+    >
+    <title>T2K Integration Hub Demo</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to the demo</a>
+
+    <header class="hero">
+      <nav class="topbar" aria-label="Demo navigation">
+        <a class="brand" href="#top" aria-label="T2K Integration Hub home">
+          <span class="brand-mark" aria-hidden="true">T2K</span>
+          <span>Integration Hub</span>
+        </a>
+        <div class="topbar-links">
+          <a href="#evidence">Evidence</a>
+          <a href="#proposal">Proposal</a>
+          <a class="nav-action" href="#review">Human review</a>
+        </div>
+      </nav>
+
+      <div class="hero-content" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">Synthetic public-benefits scenario</p>
+          <h1 id="hero-title">One case. Three agencies. Every claim traceable.</h1>
+          <p class="hero-summary" id="hero-subtitle">
+            Loading the governed integration pipeline…
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#proposal">Inspect proposal</a>
+            <a class="button button-secondary" href="#boundary">See authority boundary</a>
+          </div>
+        </div>
+
+        <aside class="case-card" aria-label="Current synthetic case">
+          <div class="case-card-topline">
+            <span class="signal" aria-hidden="true"></span>
+            <span>Live core execution</span>
+          </div>
+          <p class="case-label">Canonical identity</p>
+          <p class="case-id" id="case-id">—</p>
+          <dl class="case-meta">
+            <div>
+              <dt>Proposal</dt>
+              <dd id="case-status">Loading</dd>
+            </div>
+            <div>
+              <dt>Activation</dt>
+              <dd>Not performed</dd>
+            </div>
+          </dl>
+        </aside>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="metric-strip" aria-label="Demo summary" id="metrics">
+        <p class="loading-message">Executing @t2kai/core against the synthetic records…</p>
+      </section>
+
+      <section class="section section-intro" aria-labelledby="pipeline-heading">
+        <div class="section-heading narrow">
+          <p class="eyebrow dark">The governed path</p>
+          <h2 id="pipeline-heading">From agency records to a reviewable proposal</h2>
+          <p>
+            Each source keeps its own schema and authority. T2K maps them into a
+            shared vocabulary without erasing conflicts or promoting a value to truth.
+          </p>
+        </div>
+        <ol class="pipeline" aria-label="Integration pipeline">
+          <li>
+            <span class="pipeline-number">01</span>
+            <strong>Observe</strong>
+            <span>Immutable synthetic source envelopes</span>
+          </li>
+          <li>
+            <span class="pipeline-number">02</span>
+            <strong>Map</strong>
+            <span>Canonical fields with provenance</span>
+          </li>
+          <li>
+            <span class="pipeline-number">03</span>
+            <strong>Reconcile</strong>
+            <span>Deterministic, non-mutating proposal</span>
+          </li>
+          <li class="pipeline-human">
+            <span class="pipeline-number">04</span>
+            <strong>Review</strong>
+            <span>Human disposition stays separate</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section section-tinted" id="evidence" aria-labelledby="evidence-heading">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="eyebrow dark">Source evidence</p>
+            <h2 id="evidence-heading">Different schemas, one canonical contract</h2>
+          </div>
+          <p>
+            Choose an agency to inspect its original payload, mapping rules,
+            receipt, and canonical output.
+          </p>
+        </div>
+        <div class="source-selector" id="source-selector" aria-label="Agency sources"></div>
+        <article class="source-detail" id="source-detail" aria-live="polite"></article>
+      </section>
+
+      <section class="section" id="proposal" aria-labelledby="proposal-heading">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="eyebrow dark">Canonical reconciliation</p>
+            <h2 id="proposal-heading">Conflicts stay inspectable</h2>
+          </div>
+          <div class="proposal-summary" id="proposal-summary"></div>
+        </div>
+        <div class="field-grid" id="field-grid"></div>
+      </section>
+
+      <section class="section section-tinted governance-section" aria-labelledby="governance-heading">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="eyebrow dark">Two more governed decisions</p>
+            <h2 id="governance-heading">Link reversibly. Disclose minimally.</h2>
+          </div>
+          <p>
+            Entity resolution and purpose-limited access use the same pattern:
+            deterministic computation, inspectable receipts, and explicit boundaries.
+          </p>
+        </div>
+        <div class="governance-grid">
+          <article class="governance-card" aria-labelledby="entity-heading">
+            <div class="governance-card-heading">
+              <div class="governance-icon" aria-hidden="true">↔</div>
+              <div>
+                <p class="card-kicker">Reversible entity link</p>
+                <h3 id="entity-heading">Ambiguity routes to a human</h3>
+              </div>
+            </div>
+            <div id="entity-link-content"></div>
+          </article>
+          <article class="governance-card" aria-labelledby="access-heading">
+            <div class="governance-card-heading">
+              <div class="governance-icon lock-icon" aria-hidden="true">✓</div>
+              <div>
+                <p class="card-kicker">Purpose-limited access</p>
+                <h3 id="access-heading">Allow explicitly. Deny by default.</h3>
+              </div>
+            </div>
+            <div class="access-receipts" id="access-receipts"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section-dark" aria-labelledby="determinism-heading">
+        <div class="determinism-layout">
+          <div>
+            <p class="eyebrow">Order-invariance check</p>
+            <h2 id="determinism-heading">Same evidence. Same proposal.</h2>
+            <p>
+              The server reconciles the three agency results in original,
+              reversed, and rotated order. Every run must yield the same hash.
+            </p>
+          </div>
+          <div class="hash-checks" id="hash-checks"></div>
+        </div>
+      </section>
+
+      <section class="section" id="boundary" aria-labelledby="boundary-heading">
+        <div class="section-heading narrow">
+          <p class="eyebrow dark">Authority boundary</p>
+          <h2 id="boundary-heading">Assistance is useful. Authority is human.</h2>
+          <p>
+            The assistant can organize evidence and explain the proposal. It cannot
+            authenticate a reviewer, file a disposition, or activate a canonical record.
+          </p>
+        </div>
+        <div class="boundary-grid">
+          <article class="boundary-card assistant-card">
+            <div class="boundary-icon" aria-hidden="true">AI</div>
+            <p class="card-kicker">Advisory</p>
+            <h3>AI-assist view</h3>
+            <p id="ai-summary"></p>
+            <ul class="check-list" id="ai-may"></ul>
+            <div class="observation-list" id="ai-observations"></div>
+          </article>
+          <article class="boundary-card human-card">
+            <div class="boundary-icon" aria-hidden="true">H</div>
+            <p class="card-kicker">Authoritative disposition</p>
+            <h3>Human review</h3>
+            <p>
+              A program case supervisor weighs the evidence, chooses unresolved
+              values, and records a rationale in a separate review log.
+            </p>
+            <ul class="check-list">
+              <li>Own the final judgment</li>
+              <li>Explain the rationale</li>
+              <li>Remain independently authenticated in production</li>
+            </ul>
+            <div class="boundary-warning" id="boundary-note"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section-review" id="review" aria-labelledby="review-heading">
+        <div class="review-layout">
+          <div class="review-copy">
+            <p class="eyebrow dark">Human checkpoint</p>
+            <h2 id="review-heading">Record a demo disposition</h2>
+            <p>
+              This local form demonstrates the workflow boundary. It writes only
+              to an ephemeral in-memory log and never changes the T2K proposal.
+            </p>
+            <div class="review-status-card">
+              <span class="status-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Activation remains off</strong>
+                <span>No source or canonical record is mutated.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="review-panel">
+            <form id="review-form">
+              <div id="review-fields"></div>
+
+              <label for="decision">Disposition</label>
+              <select id="decision" name="decision" required>
+                <option value="approve_proposal">Approve review packet</option>
+                <option value="return_for_correction">Return for correction</option>
+              </select>
+
+              <div class="form-row">
+                <div>
+                  <label for="reviewer">Reviewer name</label>
+                  <input
+                    id="reviewer"
+                    name="reviewer"
+                    type="text"
+                    minlength="2"
+                    maxlength="80"
+                    autocomplete="name"
+                    required
+                  >
+                </div>
+                <div>
+                  <label for="reviewer-role">Required role</label>
+                  <input
+                    id="reviewer-role"
+                    value="Program case supervisor"
+                    readonly
+                  >
+                </div>
+              </div>
+
+              <label for="rationale">Rationale</label>
+              <textarea
+                id="rationale"
+                name="rationale"
+                rows="4"
+                minlength="12"
+                maxlength="500"
+                placeholder="Explain what evidence supports this disposition."
+                required
+              ></textarea>
+
+              <label class="attestation" for="attestation">
+                <input id="attestation" name="attestation" type="checkbox" required>
+                <span>
+                  I am acting as the human reviewer for this demo. I understand
+                  this is not identity authentication or canonical activation.
+                </span>
+              </label>
+
+              <button class="button button-submit" type="submit">
+                Record human disposition
+              </button>
+              <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </div>
+
+        <div class="review-log" aria-labelledby="review-log-heading">
+          <div>
+            <p class="card-kicker">Session audit trail</p>
+            <h3 id="review-log-heading">Disposition log</h3>
+          </div>
+          <div id="review-log-records"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-brand">
+        <span class="brand-mark" aria-hidden="true">T2K</span>
+        <span>Governed integration, made inspectable.</span>
+      </div>
+      <p>
+        Synthetic demonstration only. No real people, agency systems, benefit
+        decisions, or authenticated approvals are represented.
+      </p>
+    </footer>
+  </body>
+</html>

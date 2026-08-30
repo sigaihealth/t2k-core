@@ -13,14 +13,15 @@ the same schema, policy, reward, and lifecycle rules.
 | Lifecycle read-only | `T2K_DATABASE_URL` | Inspect deployed policy, lifecycle state, aggregate evidence, and the event chain |
 | Agent mutation | Database URL, mutation opt-in, fixed actor ID | Propose and record machine-authored lifecycle facts without impersonating a human |
 
-Start in semantic-only mode. Add a database only when persistence is needed,
-and enable mutation only for a host whose tool permissions and prompts you
-control.
+Start in semantic-only mode. Add a database only to inspect or use the separate
+governed lifecycle, and enable mutation only for a host whose tool permissions
+and prompts you control. A database setting does not make semantic-only
+integration results persistent.
 
 ## Install and Check
 
 ```bash
-npx -y @t2kai/mcp@latest --help
+npx -y @t2kai/mcp@0.3.0 --help
 ```
 
 Add the server to the host's MCP server map:
@@ -30,7 +31,7 @@ Add the server to the host's MCP server map:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@latest"]
+      "args": ["-y", "@t2kai/mcp@0.3.0"]
     }
   }
 }
@@ -52,19 +53,27 @@ operations.
    human considers promotion.
 
 For an integration workflow, call `map_governed_source_record` for each
-caller-supplied immutable envelope, pass the complete results and an explicit
-authority policy to `propose_canonical_reconciliation`, use
-`propose_entity_link` for reversible candidate scoring, and call
-`evaluate_purpose_limited_access` for a default-deny policy receipt. These four
-tools are read-only in every mode and do not fetch sources, use credentials,
-persist evidence, merge entities, accept truth, authenticate principals, or
-enforce disclosure.
+caller-supplied immutable envelope, then pass the complete results and an
+explicit authority policy to `propose_canonical_reconciliation`.
+`propose_entity_link` independently evaluates candidate evidence, and
+`evaluate_purpose_limited_access` independently evaluates an access request and
+policy. Those are separate branches, not later stages in one automatic
+pipeline. All four tools are read-only in every mode and do not fetch sources,
+use credentials, persist evidence, merge entities, accept truth, authenticate
+principals, or enforce disclosure.
 
 Tool results contain both human-readable JSON text and `structuredContent`, so
 hosts can display the result or pass it to another tool without scraping prose.
 
-See the [integration-hub tutorial](INTEGRATION_HUB_TUTORIAL.md) for a runnable
-two-source project and the human-plus-AI operating boundary.
+See the [integration-hub tutorial](INTEGRATION_HUB_TUTORIAL.md) for the generated
+two-source profile, the three-source browser demo, and the human-plus-AI
+operating boundary.
+
+Setting `T2K_DATABASE_URL` does not change these integration tools or store
+their outputs. Persisting a reviewable reconciliation proposal, recording an
+authenticated human disposition, and activating an accepted canonical revision
+are trusted-application operations through `PostgresReferenceLifecycle`, not
+MCP integration operations.
 
 ## Local Closed-Loop Workflow
 
@@ -94,7 +103,7 @@ Automatic migration is disabled by default:
 ```bash
 export T2K_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/t2k'
 export T2K_MCP_AUTO_MIGRATE=true
-npx -y @t2kai/mcp@latest
+npx -y @t2kai/mcp@0.3.0
 ```
 
 For production-like use, run migration in a controlled deployment step and

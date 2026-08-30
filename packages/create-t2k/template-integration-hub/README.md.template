@@ -5,9 +5,11 @@ two independently governed source records can be mapped into one canonical
 identity without silently merging evidence or declaring either source true.
 
 ```bash
-npm install
 npm start
 ```
+
+`create-t2k` installs dependencies by default. Run `npm install` first only if
+this project was generated with `--no-install`.
 
 The run performs these explicit steps:
 
@@ -17,8 +19,9 @@ The run performs these explicit steps:
 3. preserve all conflicting display-name candidates;
 4. apply `authority-policy.json` to select a registry-state candidate within
    the proposal;
-5. repeat reconciliation in the opposite input order; and
-6. emit a deterministic evidence packet for human review.
+5. compare the forward source order with its reverse (not every possible
+   ordering when more than two sources exist); and
+6. emit a repeatable evidence packet for human review.
 
 The selected registry-state value is only a candidate within a non-mutating
 proposal. No source record is changed and no value becomes accepted truth.
@@ -26,18 +29,29 @@ Both source envelopes deliberately use `authenticationState: "unknown"`.
 Production callers must authenticate or attest sources and policies outside
 this example.
 
-Each complete source-mapping receipt is included in the evidence packet before
-the packet hash is computed. The receipt, policy, proposal, and packet hashes
-are unkeyed deterministic self-consistency checks. They are not signatures,
-authentication tokens, or proof that an assertion is true.
+Each canonical record is paired with its complete source-mapping receipt in the
+evidence packet. The packet also includes the exact loaded `@t2kai/core`
+package version, the complete authority policy, both complete reconciliation
+proposals and their issues, and an explicitly scoped forward-versus-reverse
+hash comparison. All of those fields are included before the packet hash is
+computed. The receipt, policy, proposal, and packet hashes are unkeyed
+deterministic self-consistency checks. They are not signatures, authentication
+tokens, or proof that an assertion is true.
 
-## Explore the hub
+## Explore the hub safely
 
-- Change a source value in `source-records/` and inspect the preserved evidence.
-- Reverse the priorities in `authority-policy.json`, rerun, and inspect the
-  changed proposed authority selection.
-- Add a third synthetic `.json` source with the same `party_key`; it is
-  discovered automatically on the next run.
+- Treat a source envelope as immutable once it has been mapped. To model a
+  later observation, copy it to a new `.json` file and assign a new
+  `sourceRecordKey`, payload `record_id`, `eventTime`, and `observedTime`; never
+  rewrite the earlier envelope.
+- To reverse the priorities in `authority-policy.json`, also bump
+  `policyVersion`, rerun, and inspect the changed proposed authority selection.
+- Add a third synthetic `.json` source with the same `party_key` and its own
+  new envelope identifiers and timestamps; it is discovered automatically on
+  the next run.
+- When a field mapping changes, bump its `mappingVersion`. Because mappings are
+  part of this ontology pack, also bump `ontologyVersion`; bump
+  `ontologyVersion` for any other ontology contract change as well.
 - Replace `humanCheckpoint: "always"` only after defining a real review and
   authorization boundary in the calling system.
 

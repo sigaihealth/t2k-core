@@ -93,9 +93,36 @@ test("scaffolds the complete local decision project", async (context) => {
     await fs.readFile(path.join(result.targetPath, "package.json"), "utf8")
   );
   assert.equal(manifest.name, "harborlight-demo");
-  assert.equal(manifest.dependencies["@t2kai/core"], "^0.4.0");
+  assert.equal(manifest.dependencies["@t2kai/core"], "^0.4.1");
   assert.equal(manifest.scripts["db:down"], "docker compose down");
   assert.equal(manifest.scripts["db:reset"], "docker compose down -v");
+
+  const compose = await fs.readFile(
+    path.join(result.targetPath, "compose.yml"),
+    "utf8"
+  );
+  assert.match(compose, /127\.0\.0\.1:55432:5432/);
+  assert.doesNotMatch(compose, /- "55432:5432"/);
+  assert.match(compose, /disposable local-only quickstart credentials/i);
+
+  const generatedReadme = await fs.readFile(
+    path.join(result.targetPath, "README.md"),
+    "utf8"
+  );
+  assert.match(generatedReadme, /`t2k` username and\s+`t2k` password.*local-only/is);
+  assert.match(generatedReadme, /`npm install` first only if.*`--no-install`/is);
+  assert.doesNotMatch(generatedReadme, /```bash\s+npm install\s+npm start/);
+  assert.match(generatedReadme, /bump the policy `version`/i);
+  assert.match(generatedReadme, /bump\s+`ontologyVersion`/i);
+  assert.match(generatedReadme, /already been\s+executed or persisted as immutable evidence/i);
+
+  for (const relativePath of ["src/run.mjs", "src/lifecycle.mjs"]) {
+    const runner = await fs.readFile(
+      path.join(result.targetPath, relativePath),
+      "utf8"
+    );
+    assert.match(runner, /Invalid JSON in \$\{relativePath\}/);
+  }
   assert.match(output.join(""), /human must still authorize/i);
   assert.match(output.join(""), /persisted closed loop/i);
   assert.match(output.join(""), /db:reset.*delete its volume/i);
@@ -137,7 +164,7 @@ test("scaffolds the synthetic integration-hub profile", async (context) => {
     await fs.readFile(path.join(result.targetPath, "package.json"), "utf8")
   );
   assert.equal(manifest.name, "integration-hub-demo");
-  assert.equal(manifest.dependencies["@t2kai/core"], "^0.4.0");
+  assert.equal(manifest.dependencies["@t2kai/core"], "^0.4.1");
   assert.equal(manifest.scripts.start, "node src/run.mjs");
 
   const ontology = JSON.parse(
@@ -175,7 +202,16 @@ test("scaffolds the synthetic integration-hub profile", async (context) => {
   );
   assert.match(generatedReadme, /every regular `source-records\/\*\.json`/i);
   assert.match(generatedReadme, /discovered automatically/i);
-  assert.match(generatedReadme, /complete source-mapping receipt/i);
+  assert.match(generatedReadme, /canonical record is paired with its complete source-mapping receipt/i);
+  assert.match(generatedReadme, /forward-versus-reverse/i);
+  assert.match(generatedReadme, /not every possible\s+ordering/i);
+  assert.match(generatedReadme, /source envelope as immutable/i);
+  assert.match(generatedReadme, /new\s+`sourceRecordKey`/i);
+  assert.match(generatedReadme, /bump\s+`policyVersion`/i);
+  assert.match(generatedReadme, /bump its `mappingVersion`/i);
+  assert.match(generatedReadme, /also bump `ontologyVersion`/i);
+  assert.match(generatedReadme, /`npm install` first only if.*`--no-install`/is);
+  assert.doesNotMatch(generatedReadme, /```bash\s+npm install\s+npm start/);
 
   const runner = await fs.readFile(
     path.join(result.targetPath, "src/run.mjs"),
@@ -183,7 +219,16 @@ test("scaffolds the synthetic integration-hub profile", async (context) => {
   );
   assert.match(runner, /fs\.readdir\(sourceDirectory/);
   assert.match(runner, /sort\(compareCanonicalStrings\)/);
+  assert.match(runner, /canonicalRecord: result\.canonicalRecord/);
   assert.match(runner, /receipt: result\.receipt/);
+  assert.match(runner, /coreRuntime:/);
+  assert.match(runner, /packageVersion: corePackageManifest\.version/);
+  assert.match(runner, /proposal: reconciliation/);
+  assert.match(runner, /reverseInputOrderProposal: reverseOrderReconciliation/);
+  assert.match(runner, /comparisonScope: "forward_and_reverse_input_order_only"/);
+  assert.match(runner, /issues: reconciliation\.issues/);
+  assert.match(runner, /Invalid JSON in \$\{relativePath\}/);
+  assert.doesNotMatch(runner, /deterministicAcrossInputOrder/);
   assert.doesNotMatch(runner, /registry-alpha\.json|registry-beta\.json/);
 
   assert.match(output.join(""), /deterministic evidence proposal for human review/i);

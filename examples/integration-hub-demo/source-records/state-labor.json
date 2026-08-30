@@ -1,0 +1,31 @@
+{
+  "mappingId": "labor_wage_match_v1",
+  "agency": {
+    "id": "state-labor",
+    "label": "State Labor Department",
+    "shortLabel": "Labor",
+    "accent": "green"
+  },
+  "sourceSystem": "synthetic-state-labor",
+  "sourceLocator": "synthetic://state-labor/wage-matches/WM-33018",
+  "sourceRecordKey": "WM-33018",
+  "sourceSchemaVersion": "wage-match-v1",
+  "eventTime": "2026-08-29T14:02:00.000Z",
+  "observedTime": "2026-08-29T14:05:00.000Z",
+  "authenticationState": "system_asserted",
+  "authorityRef": "authority:state-labor",
+  "dataClassification": "synthetic_demo",
+  "purposeTags": ["integration_hub_demo", "case_coordination"],
+  "retentionPolicy": {
+    "policyId": "synthetic-session-only"
+  },
+  "payload": {
+    "transmissionId": "WM-33018:9",
+    "effectiveAt": "2026-08-29T14:02:00.000Z",
+    "receivedAt": "2026-08-29T14:05:00.000Z",
+    "personKey": "pb-1042",
+    "employeeName": "Maya Chen",
+    "contactAddress": "18 Harbor Way, Cedar Bay",
+    "employmentCode": "ACTIVE"
+  }
+}

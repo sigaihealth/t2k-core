@@ -1,0 +1,32 @@
+{
+  "mappingId": "state_benefits_case_v1",
+  "agency": {
+    "id": "state-benefits",
+    "label": "State Benefits Agency",
+    "shortLabel": "Benefits",
+    "accent": "blue"
+  },
+  "sourceSystem": "synthetic-state-benefits",
+  "sourceLocator": "synthetic://state-benefits/cases/SB-49210",
+  "sourceRecordKey": "SB-49210",
+  "sourceSchemaVersion": "state-case-v1",
+  "eventTime": "2026-08-29T14:00:00.000Z",
+  "observedTime": "2026-08-29T14:00:06.000Z",
+  "authenticationState": "system_asserted",
+  "authorityRef": "authority:state-benefits",
+  "dataClassification": "synthetic_demo",
+  "purposeTags": ["integration_hub_demo", "case_coordination"],
+  "retentionPolicy": {
+    "policyId": "synthetic-session-only"
+  },
+  "payload": {
+    "message_id": "SB-49210:17",
+    "occurred_at": "2026-08-29T14:00:00.000Z",
+    "observed_at": "2026-08-29T14:00:06.000Z",
+    "clientNumber": " pb-1042 ",
+    "legalName": " Maya Chen ",
+    "residentialAddress": "18 Harbor Way, Cedar Bay",
+    "benefitDecision": "APPROVED",
+    "employmentIndicator": "unknown"
+  }
+}

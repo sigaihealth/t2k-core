@@ -384,4 +384,95 @@ describe("purpose-limited access", () => {
     expect(invalidDate.reasonCode).toBe("invalid_request_time");
     expect(invalidHour.reasonCode).toBe("invalid_request_time");
   });
+
+  it("fails closed on blank required request fields and empty evidence arrays", () => {
+    const receipt = evaluatePurposeLimitedAccess(
+      {
+        policyId: "benefits:unconstrained-test",
+        policyVersion: "1.0.0",
+        defaultEffect: "deny",
+        rules: [
+          {
+            ruleId: "allow-unconstrained",
+            effect: "allow",
+            reason: "This broad rule must not authorize a malformed request.",
+          },
+        ],
+      },
+      {
+        requestKey: "",
+        principalId: "",
+        principalRoles: [],
+        purpose: "",
+        subjectRef: "",
+        subjectRelationship: "",
+        dataCategories: [],
+        jurisdiction: "",
+        requestedAt: "2026-08-29T18:00:00.000Z",
+        sourceRecordRefs: [],
+      }
+    );
+
+    expect(receipt).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_request",
+      matchedRuleId: null,
+      principalId: "",
+      dataCategories: [],
+      sourceRecordRefs: [],
+    });
+    const { receiptHash, ...receiptWithoutHash } = receipt;
+    expect(receiptHash).toBe(semanticHash(receiptWithoutHash));
+  });
+
+  it("returns deterministic deny receipts instead of throwing on malformed shapes", () => {
+    const malformedRequest = evaluatePurposeLimitedAccess(
+      policy,
+      {
+        ...request,
+        principalRoles: null,
+        dataCategories: "identity",
+        sourceRecordRefs: 7,
+      } as unknown as PurposeLimitedAccessRequest
+    );
+    const malformedPolicy = evaluatePurposeLimitedAccess(
+      {
+        ...policy,
+        rules: null,
+      } as unknown as PurposeLimitedAccessPolicy,
+      request
+    );
+    const missingPolicy = evaluatePurposeLimitedAccess(
+      null as unknown as PurposeLimitedAccessPolicy,
+      request
+    );
+
+    expect(malformedRequest).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_request",
+    });
+    expect(malformedPolicy).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      policyId: policy.policyId,
+    });
+    expect(missingPolicy).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+      policyId: "",
+      policyVersion: "",
+    });
+  });
+
+  it("rejects blank policy identity before evaluating an allow rule", () => {
+    const receipt = evaluatePurposeLimitedAccess(
+      { ...policy, policyId: " " },
+      request
+    );
+
+    expect(receipt).toMatchObject({
+      decision: "deny",
+      reasonCode: "invalid_policy_rule",
+    });
+  });
 });
