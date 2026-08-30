@@ -45,7 +45,16 @@ function jsonResponse(response, statusCode, payload, extraHeaders = {}) {
 function loopbackHost(hostHeader) {
   if (typeof hostHeader !== "string" || hostHeader.length === 0) return null;
   try {
-    const parsed = new URL(`http://${hostHeader}`);
+    const parsed = new URL(`http://${hostHeader}/`);
+    if (
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== "/" ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return null;
+    }
     if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) {
       return null;
     }
@@ -57,12 +66,18 @@ function loopbackHost(hostHeader) {
 
 function mutationOriginMatchesHost(request) {
   const origin = request.headers.origin;
-  if (origin === undefined) return true;
+  if (origin === undefined) return false;
   const expectedHost = loopbackHost(request.headers.host);
   try {
     const parsed = new URL(origin);
     return (
       parsed.protocol === "http:" &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.pathname === "/" &&
+      parsed.search === "" &&
+      parsed.hash === "" &&
+      parsed.origin === origin &&
       loopbackHost(parsed.host) === expectedHost
     );
   } catch {
@@ -72,7 +87,12 @@ function mutationOriginMatchesHost(request) {
 
 async function readJsonBody(request) {
   const contentType = request.headers["content-type"] ?? "";
-  if (!contentType.toLowerCase().startsWith("application/json")) {
+  if (
+    typeof contentType !== "string" ||
+    !/^application\/json(?:\s*;\s*charset\s*=\s*(?:utf-8|"utf-8"))?$/i.test(
+      contentType.trim()
+    )
+  ) {
     throw new ReviewInputError("Content-Type must be application/json.", 415);
   }
   const chunks = [];

@@ -6,6 +6,40 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-30
+
+### Security
+
+- Purpose-access, source-mapping, canonical-reconciliation, and entity-resolution
+  APIs now evaluate and hash one recursively snapshotted own-data input. Inherited
+  getters cannot affect a decision, while own accessors, cycles, sparse arrays,
+  and non-JSON values fail closed without being invoked.
+- Reference reward timestamps now require an explicit UTC offset and a valid
+  calendar date, eliminating host-timezone-dependent observation ordering.
+- The local integration-hub demo rejects Host userinfo, non-origin URL
+  components, JSON-prefix media types, and unsupported content-type parameters.
+
+### Fixed
+
+- PostgreSQL schema v2 now has the same nullable `observation_set_hash` layout
+  for fresh and upgraded databases. Legacy unbound assessments are never used
+  for closure, training, holdout replay, candidate promotion, staged deployment,
+  or snapshot aggregates, and no unsafe historical hash is invented.
+- Generated projects pin `@t2kai/core@0.4.3` exactly, and the `create-t2k`
+  package now carries the complete Apache-2.0 license text.
+- npm publication workflows pin third-party GitHub Actions to immutable commit
+  SHAs.
+
+### Compatibility
+
+- The database schema integer remains 2 so a temporary 0.4.1 application
+  rollback can still migrate and insert an unbound assessment. Treat 0.4.1 as
+  an emergency write-limited rollback: it does not enforce the new quarantine,
+  so do not close, train, evaluate, promote, deploy, or consume reward aggregates
+  until 0.4.3 is restored. Then recompute an open episode's reward before
+  closure; a closed unbound episode remains quarantined and must be replayed as
+  a new episode if needed.
+
 ## [0.4.2] - 2026-08-30
 
 ### Fixed

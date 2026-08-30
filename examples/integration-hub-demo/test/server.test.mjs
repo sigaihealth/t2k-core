@@ -103,12 +103,12 @@ describe("integration hub demo server", () => {
     };
     const aiResponse = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify({ ...common, actorType: "ai_agent" }),
     });
     const staleResponse = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify({
         ...common,
         actorType: "human",
@@ -125,7 +125,7 @@ describe("integration hub demo server", () => {
   it("requires every unresolved choice before human approval", async () => {
     const response = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify({
         proposalHash: model.proposal.proposalHash,
         entityDecisionHash: model.entityResolution.decision.decisionHash,
@@ -147,7 +147,7 @@ describe("integration hub demo server", () => {
     const unresolved = model.humanReview.unresolvedFields[0];
     const response = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify({
         proposalHash: model.proposal.proposalHash,
         entityDecisionHash: model.entityResolution.decision.decisionHash,
@@ -180,12 +180,12 @@ describe("integration hub demo server", () => {
     };
     const missingResponse = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify(common),
     });
     const staleResponse = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify({
         ...common,
         entityDecisionHash: "stale-entity-decision-hash",
@@ -209,7 +209,7 @@ describe("integration hub demo server", () => {
       model.entityResolution.decision.decisionHash;
     const response = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
       body: JSON.stringify({
         proposalHash: model.proposal.proposalHash,
         entityDecisionHash,
@@ -270,11 +270,54 @@ describe("integration hub demo server", () => {
         selections: {},
       }),
     });
+    const missingOrigin = await fetch(`${baseUrl}/api/reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
 
     assert.equal(hostileHost.status, 403);
     assert.match(JSON.parse(hostileHost.body).error, /loopback Host/i);
     assert.equal(hostileOrigin.status, 403);
     assert.match((await hostileOrigin.json()).error, /origin must match/i);
+    assert.equal(missingOrigin.status, 403);
+    assert.match((await missingOrigin.json()).error, /origin must match/i);
+  });
+
+  it("rejects Host userinfo, non-origin URL components, and misleading JSON media types", async () => {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const userinfoHost = await rawRequest(`${baseUrl}/api/demo`, {
+      headers: { Host: `demo@127.0.0.1:${address.port}` },
+    });
+    const originWithPath = await fetch(`${baseUrl}/api/reviews`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: `${baseUrl}/not-an-origin`,
+      },
+      body: "{}",
+    });
+    const jsonPrefix = await fetch(`${baseUrl}/api/reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/jsonp", Origin: baseUrl },
+      body: "{}",
+    });
+    const malformedParameter = await fetch(`${baseUrl}/api/reviews`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; boundary=ignored",
+        Origin: baseUrl,
+      },
+      body: "{}",
+    });
+
+    assert.equal(userinfoHost.status, 403);
+    assert.match(JSON.parse(userinfoHost.body).error, /loopback Host/i);
+    assert.equal(originWithPath.status, 403);
+    assert.match((await originWithPath.json()).error, /origin must match/i);
+    assert.equal(jsonPrefix.status, 415);
+    assert.equal(malformedParameter.status, 415);
   });
 
   it("returns resource-specific Allow headers", async () => {

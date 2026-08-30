@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -488,6 +489,18 @@ describePostgres("Postgres reference lifecycle", () => {
   }
 
   it("serializes migration and refuses a future schema version", async () => {
+    expect(
+      (
+        await pool.query<{ is_nullable: string }>(
+          `SELECT is_nullable
+           FROM information_schema.columns
+           WHERE table_schema = 't2k_reference'
+             AND table_name = 'reward_assessments'
+             AND column_name = 'observation_set_hash'`
+        )
+      ).rows
+    ).toEqual([{ is_nullable: "YES" }]);
+
     await pool.query(
       "INSERT INTO t2k_reference.schema_migrations(version) VALUES (3)"
     );
@@ -527,6 +540,23 @@ describePostgres("Postgres reference lifecycle", () => {
     );
     expect(await lifecycle.migrate()).toBe(2);
     await expectAcceptanceActivationIndexes();
+
+    await pool.query(
+      `ALTER TABLE t2k_reference.reward_assessments
+       ALTER COLUMN observation_set_hash SET NOT NULL`
+    );
+    expect(await lifecycle.migrate()).toBe(2);
+    expect(
+      (
+        await pool.query<{ is_nullable: string }>(
+          `SELECT is_nullable
+           FROM information_schema.columns
+           WHERE table_schema = 't2k_reference'
+             AND table_name = 'reward_assessments'
+             AND column_name = 'observation_set_hash'`
+        )
+      ).rows
+    ).toEqual([{ is_nullable: "YES" }]);
 
     await pool.query(
       "DROP INDEX t2k_reference.t2k_reference_reconciliation_acceptance_revision_uq"
@@ -2525,5 +2555,129 @@ describePostgres("Postgres reference lifecycle", () => {
        )`
     );
     expect(await lifecycle.migrate()).toBe(2);
+  });
+
+  it("keeps 0.4.1 inserts compatible while quarantining the latest unbound assessment", async () => {
+    const aggregateEpisodeCount = async () =>
+      (await lifecycle.snapshot()).rewardAggregates.reduce(
+        (sum, aggregate) => sum + aggregate.episodeCount,
+        0
+      );
+    const insertLegacyUnboundAssessment = async (
+      episodeId: string,
+      suffix: string
+    ) => {
+      await pool.query(
+         `INSERT INTO t2k_reference.reward_assessments (
+           id, decision_episode_id, assessment_key, reward_spec_hash,
+           dimensions, scalar_reward, evaluation_reward, attribution,
+           lifecycle_status, assessed_by_actor_type, assessed_by_actor_id,
+           assessed_at
+         )
+         SELECT $1, decision_episode_id, assessment_key || $3, reward_spec_hash,
+                dimensions, scalar_reward, evaluation_reward, attribution,
+                lifecycle_status, assessed_by_actor_type,
+                assessed_by_actor_id, NOW() + INTERVAL '1 day'
+         FROM t2k_reference.reward_assessments
+         WHERE decision_episode_id = $2
+         ORDER BY assessed_at DESC, id DESC
+         LIMIT 1`,
+        [randomUUID(), episodeId, suffix]
+      );
+    };
+
+    const createLegacyGateCandidate = async (version: string) => {
+      const candidate = await lifecycle.createCandidate(
+        {
+          candidateKey: `candidate:legacy-gate:${version}`,
+          policyKey: "harborlight-dispatch",
+          sourcePolicyVersionId: baselineVersion.id,
+          proposedPolicyVersion: version,
+          proposedSpecification: candidateSpecification,
+          trainingEpisodeIds,
+          rationale: "Prepare a transition-time legacy evidence check.",
+        },
+        proposer
+      );
+      await lifecycle.evaluateCandidate(
+        candidate.id,
+        {
+          evaluationKey: `replay:legacy-gate:${version}`,
+          holdoutEpisodeIds,
+        },
+        evaluator
+      );
+      return candidate;
+    };
+
+    const stagedCandidate = await createLegacyGateCandidate("1.4.0");
+    const staged = await lifecycle.promoteCandidate(
+      stagedCandidate.id,
+      {
+        reviewRationale: "Stage the candidate before evidence becomes unbound.",
+        deploy: false,
+      },
+      promoter
+    );
+    const proposedCandidate = await createLegacyGateCandidate("1.5.0");
+    const before = await aggregateEpisodeCount();
+    await insertLegacyUnboundAssessment(
+      trainingEpisodeIds[0]!,
+      ":legacy-unbound-training"
+    );
+    await insertLegacyUnboundAssessment(
+      holdoutEpisodeIds[0]!,
+      ":legacy-unbound-holdout"
+    );
+    await expect(
+      lifecycle.promoteCandidate(
+        proposedCandidate.id,
+        { reviewRationale: "Unbound evidence must block promotion." },
+        promoter
+      )
+    ).rejects.toThrow("latest reward assessment to bind its observation set");
+    await expect(
+      lifecycle.deployPromotion(staged.promotion.id, reviewer)
+    ).rejects.toThrow("latest reward assessment to bind its observation set");
+
+    await expect(
+      lifecycle.createCandidate(
+        {
+          candidateKey: "candidate:legacy-unbound-training",
+          policyKey: "harborlight-dispatch",
+          sourcePolicyVersionId: baselineVersion.id,
+          proposedPolicyVersion: "1.6.0",
+          proposedSpecification: candidateSpecification,
+          trainingEpisodeIds,
+          rationale: "Unbound legacy evidence must not train a candidate.",
+        },
+        proposer
+      )
+    ).rejects.toThrow("Every training episode must be closed, rewarded");
+
+    const candidate = await lifecycle.createCandidate(
+      {
+        candidateKey: "candidate:legacy-unbound-holdout",
+        policyKey: "harborlight-dispatch",
+        sourcePolicyVersionId: baselineVersion.id,
+        proposedPolicyVersion: "1.6.0",
+        proposedSpecification: candidateSpecification,
+        trainingEpisodeIds: trainingEpisodeIds.slice(1),
+        rationale: "Bound training evidence prepares the holdout quarantine test.",
+      },
+      proposer
+    );
+    await expect(
+      lifecycle.evaluateCandidate(
+        candidate.id,
+        {
+          evaluationKey: "replay:legacy-unbound-holdout",
+          holdoutEpisodeIds,
+        },
+        evaluator
+      )
+    ).rejects.toThrow("Every holdout episode must be closed, rewarded");
+
+    expect(await aggregateEpisodeCount()).toBe(before - 2);
   });
 });

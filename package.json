@@ -1,6 +1,6 @@
 {
   "name": "t2k-core-workspace",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "Open specification and reference developer runtime for governed T2K decision systems.",
   "engines": {

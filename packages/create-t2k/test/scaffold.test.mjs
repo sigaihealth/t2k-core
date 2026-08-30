@@ -93,7 +93,7 @@ test("scaffolds the complete local decision project", async (context) => {
     await fs.readFile(path.join(result.targetPath, "package.json"), "utf8")
   );
   assert.equal(manifest.name, "harborlight-demo");
-  assert.equal(manifest.dependencies["@t2kai/core"], "^0.4.2");
+  assert.equal(manifest.dependencies["@t2kai/core"], "0.4.3");
   assert.equal(manifest.scripts["db:down"], "docker compose down");
   assert.equal(manifest.scripts["db:reset"], "docker compose down -v");
 
@@ -164,7 +164,7 @@ test("scaffolds the synthetic integration-hub profile", async (context) => {
     await fs.readFile(path.join(result.targetPath, "package.json"), "utf8")
   );
   assert.equal(manifest.name, "integration-hub-demo");
-  assert.equal(manifest.dependencies["@t2kai/core"], "^0.4.2");
+  assert.equal(manifest.dependencies["@t2kai/core"], "0.4.3");
   assert.equal(manifest.scripts.start, "node src/run.mjs");
 
   const ontology = JSON.parse(

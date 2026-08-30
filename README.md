@@ -49,7 +49,7 @@ network, private packs, and customer data are separate products.
 Requirements: Node.js 20.10 or newer and npm.
 
 ```bash
-npx create-t2k@0.4.2 my-decision-loop
+npx create-t2k@0.4.3 my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -73,7 +73,7 @@ to delete the disposable lifecycle data.
 Generate a governed integration-hub project instead:
 
 ```bash
-npx create-t2k@0.4.2 my-integration-hub --profile integration-hub
+npx create-t2k@0.4.3 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -176,7 +176,7 @@ The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm install @t2kai/core@0.4.2
+npm install @t2kai/core@0.4.3
 npm install @t2kai/mcp@0.3.0
 ```
 
@@ -195,7 +195,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.4.2` includes the governed source-mapping,
+`@t2kai/core@0.4.3` includes the governed source-mapping,
 canonical-reconciliation, entity-resolution, and purpose-access exports plus
 the persisted reconciliation review and lineage path documented in the core
 guide.
@@ -222,6 +222,12 @@ deterministic reference functions. They do not fetch or mutate source systems,
 authenticate principals, enforce an IAM decision, persist receipts, merge
 entities, or promote source data or proposals to accepted authority; the
 calling application owns those controls.
+
+Public access, mapping, reconciliation, and entity-resolution inputs are
+snapshotted once as JSON-compatible own data before evaluation. Inherited
+properties and getters are never decision evidence; own accessors, cycles,
+sparse arrays, and non-JSON values fail closed. Callers should pass parsed JSON
+or ordinary data records, not behavior-bearing domain objects.
 
 ## Contributing
 

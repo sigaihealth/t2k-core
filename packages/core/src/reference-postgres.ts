@@ -1222,6 +1222,48 @@ export class PostgresReferenceLifecycle {
     }
   }
 
+  private async requireBoundCandidateEvidence(
+    client: PoolClient,
+    candidateId: string,
+    operation: string
+  ) {
+    const result = await client.query<{
+      evidence_count: number;
+      bound_count: number;
+    }>(
+      `WITH evidence_episode_ids AS (
+         SELECT UNNEST(training_episode_ids) AS episode_id
+         FROM t2k_reference.learning_candidates
+         WHERE id = $1
+         UNION
+         SELECT UNNEST(evaluations.holdout_episode_ids) AS episode_id
+         FROM t2k_reference.policy_evaluations AS evaluations
+         WHERE evaluations.learning_candidate_id = $1
+       ), latest_assessments AS (
+         SELECT evidence.episode_id, assessments.observation_set_hash
+         FROM evidence_episode_ids AS evidence
+         LEFT JOIN LATERAL (
+           SELECT observation_set_hash
+           FROM t2k_reference.reward_assessments
+           WHERE decision_episode_id = evidence.episode_id
+           ORDER BY assessed_at DESC, id DESC
+           LIMIT 1
+         ) AS assessments ON TRUE
+       )
+       SELECT COUNT(*)::integer AS evidence_count,
+              COUNT(observation_set_hash)::integer AS bound_count
+       FROM latest_assessments`,
+      [candidateId]
+    );
+    const evidenceCount = result.rows[0]?.evidence_count ?? 0;
+    const boundCount = result.rows[0]?.bound_count ?? 0;
+    if (evidenceCount === 0 || evidenceCount !== boundCount) {
+      throw new ReferenceLifecycleConflictError(
+        `${operation} requires every training and holdout episode's latest reward assessment to bind its observation set.`
+      );
+    }
+  }
+
   private async lockReconciliationIdempotency(
     client: PoolClient,
     idempotencyKey: string
@@ -2630,7 +2672,7 @@ export class PostgresReferenceLifecycle {
          INNER JOIN t2k_reference.reasoning_policy_versions AS versions
            ON versions.id = episodes.policy_version_id
          INNER JOIN LATERAL (
-           SELECT evaluation_reward, lifecycle_status
+           SELECT evaluation_reward, lifecycle_status, observation_set_hash
            FROM t2k_reference.reward_assessments
            WHERE decision_episode_id = episodes.id
            ORDER BY assessed_at DESC, id DESC
@@ -2640,7 +2682,8 @@ export class PostgresReferenceLifecycle {
            AND versions.policy_id = $2
            AND episodes.lifecycle_status = 'closed'
            AND assessments.lifecycle_status IN ('complete', 'guardrail_violation')
-           AND assessments.evaluation_reward IS NOT NULL`,
+           AND assessments.evaluation_reward IS NOT NULL
+           AND assessments.observation_set_hash IS NOT NULL`,
         [trainingEpisodeIds, source.policy_id]
       );
       if (training.rows.length !== trainingEpisodeIds.length) {
@@ -2768,7 +2811,7 @@ export class PostgresReferenceLifecycle {
          INNER JOIN t2k_reference.recommendations AS recommendations
            ON recommendations.id = authorizations.recommendation_id
          INNER JOIN LATERAL (
-           SELECT evaluation_reward, lifecycle_status
+           SELECT evaluation_reward, lifecycle_status, observation_set_hash
            FROM t2k_reference.reward_assessments
            WHERE decision_episode_id = episodes.id
            ORDER BY assessed_at DESC, id DESC
@@ -2776,7 +2819,8 @@ export class PostgresReferenceLifecycle {
          ) AS assessments ON TRUE
          WHERE episodes.id = ANY($1::uuid[])
            AND versions.policy_id = $2
-           AND episodes.lifecycle_status = 'closed'`,
+           AND episodes.lifecycle_status = 'closed'
+           AND assessments.observation_set_hash IS NOT NULL`,
         [holdoutEpisodeIds, candidate.policy_id]
       );
       if (
@@ -2925,6 +2969,11 @@ export class PostgresReferenceLifecycle {
           "The policy evaluator cannot promote the same candidate."
         );
       }
+      await this.requireBoundCandidateEvidence(
+        client,
+        candidate.id,
+        "Candidate promotion"
+      );
       const policy = await one<{ active_version_id: string | null }>(
         client,
         `SELECT active_version_id
@@ -3056,6 +3105,7 @@ export class PostgresReferenceLifecycle {
     return this.transaction(async (client) => {
       const promotion = await one<{
         id: string;
+        learning_candidate_id: string;
         lifecycle_status: string;
         promoted_policy_version_id: string;
         previous_active_version_id: string;
@@ -3064,7 +3114,8 @@ export class PostgresReferenceLifecycle {
         version_status: string;
       }>(
         client,
-        `SELECT promotions.id, promotions.lifecycle_status,
+        `SELECT promotions.id, promotions.learning_candidate_id,
+                promotions.lifecycle_status,
                 promotions.promoted_policy_version_id,
                 promotions.previous_active_version_id,
                 versions.policy_id, versions.lifecycle_status AS version_status,
@@ -3092,6 +3143,11 @@ export class PostgresReferenceLifecycle {
           "The staged promotion is stale because its source is no longer active."
         );
       }
+      await this.requireBoundCandidateEvidence(
+        client,
+        promotion.learning_candidate_id,
+        "Staged promotion deployment"
+      );
       await client.query(
         `UPDATE t2k_reference.reasoning_policy_versions
          SET lifecycle_status = 'accepted'
@@ -4576,7 +4632,7 @@ export class PostgresReferenceLifecycle {
                 assessments.lifecycle_status
          FROM t2k_reference.decision_episodes AS episodes
          INNER JOIN LATERAL (
-           SELECT evaluation_reward, lifecycle_status
+           SELECT evaluation_reward, lifecycle_status, observation_set_hash
            FROM t2k_reference.reward_assessments
            WHERE decision_episode_id = episodes.id
            ORDER BY assessed_at DESC, id DESC
@@ -4584,7 +4640,8 @@ export class PostgresReferenceLifecycle {
          ) AS assessments ON TRUE
          WHERE episodes.lifecycle_status = 'closed'
            AND assessments.lifecycle_status IN ('complete', 'guardrail_violation')
-           AND assessments.evaluation_reward IS NOT NULL`
+           AND assessments.evaluation_reward IS NOT NULL
+           AND assessments.observation_set_hash IS NOT NULL`
       );
       const eventRows = await client.query(
         `SELECT * FROM t2k_reference.lifecycle_events ORDER BY sequence ASC`

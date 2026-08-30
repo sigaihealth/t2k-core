@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS t2k_reference.reward_assessments (
   decision_episode_id UUID NOT NULL REFERENCES t2k_reference.decision_episodes(id),
   assessment_key TEXT NOT NULL,
   reward_spec_hash TEXT NOT NULL,
-  observation_set_hash TEXT NOT NULL,
+  observation_set_hash TEXT,
   dimensions JSONB NOT NULL,
   scalar_reward DOUBLE PRECISION,
   evaluation_reward DOUBLE PRECISION,
@@ -201,6 +201,12 @@ ALTER TABLE t2k_reference.reward_assessments
 
 ALTER TABLE t2k_reference.reward_assessments
   ADD COLUMN IF NOT EXISTS observation_set_hash TEXT;
+
+-- Keep schema v2 rollback-compatible with 0.4.1, whose assessment inserts did
+-- not name this column. Null means legacy/unbound evidence and is deliberately
+-- excluded from learning, holdout replay, closure, and aggregate calculations.
+ALTER TABLE t2k_reference.reward_assessments
+  ALTER COLUMN observation_set_hash DROP NOT NULL;
 
 UPDATE t2k_reference.reward_assessments
 SET evaluation_reward = CASE

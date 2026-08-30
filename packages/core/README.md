@@ -27,7 +27,7 @@ subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
 and persisted reconciliation-review APIs described below are published in
-`@t2kai/core@0.4.2`.
+`@t2kai/core@0.4.3`.
 
 ## Compile Packs Locally
 
@@ -211,6 +211,11 @@ or equivalent trust evidence where required, govern the policy, persist the
 evidence, and record any human disposition. The proposal does not mutate source
 records, merge entities, or promote a value to accepted truth; all alternatives
 remain present for downstream disposition.
+
+These public object APIs snapshot JSON-compatible own data once before they
+validate, decide, or hash. Inherited properties are ignored, and own accessors,
+cycles, sparse arrays, or non-JSON values fail closed. Pass parsed JSON or
+ordinary data records rather than behavior-bearing objects.
 
 `resolveEntityCandidates` separately produces a reversible entity-link
 proposal. Weighted identifier rules, required identifiers, automatic and

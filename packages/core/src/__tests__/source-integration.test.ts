@@ -200,6 +200,67 @@ function rehashReconciliationResult(result: ExecuteSourceMappingResult) {
 }
 
 describe("source integration", () => {
+  it("rejects prototype-backed source mappings without using inherited getters", () => {
+    class PrototypeMapping implements OntologyPackSourceMapping {
+      get id() { return "benefits:prototype-a"; }
+      get mappingVersion() { return sourceMapping.mappingVersion; }
+      get sourceType() { return sourceMapping.sourceType; }
+      get sourceLocator() { return sourceMapping.sourceLocator; }
+      get sourceSchemaVersion() { return sourceMapping.sourceSchemaVersion; }
+      get fields() { return sourceMapping.fields; }
+      get sheet() { return sourceMapping.sheet; }
+      get range() { return sourceMapping.range; }
+      get headers() { return sourceMapping.headers; }
+      get object() { return sourceMapping.object; }
+      get properties() { return sourceMapping.properties; }
+      get transform() { return sourceMapping.transform; }
+      get fieldMappings() { return sourceMapping.fieldMappings; }
+      get targetIdentity() { return sourceMapping.targetIdentity; }
+      get idempotencyPath() { return sourceMapping.idempotencyPath; }
+      get eventTimePath() { return sourceMapping.eventTimePath; }
+      get observedTimePath() { return sourceMapping.observedTimePath; }
+      get authority() { return sourceMapping.authority; }
+      get riskTier() { return sourceMapping.riskTier; }
+      get reviewStatus() { return sourceMapping.reviewStatus; }
+      get driftPolicy() { return sourceMapping.driftPolicy; }
+      get lateArrivalPolicy() { return sourceMapping.lateArrivalPolicy; }
+      get humanCheckpoint() { return sourceMapping.humanCheckpoint; }
+      get replayable() { return sourceMapping.replayable; }
+    }
+    class OtherPrototypeMapping extends PrototypeMapping {
+      override get id() { return "benefits:prototype-b"; }
+      override get sourceLocator() { return "synthetic://prototype-b"; }
+      override get object() { return "benefits:other-person"; }
+    }
+
+    const first = executeSourceMapping({
+      mapping: new PrototypeMapping(),
+      envelope: envelope(),
+    });
+    const second = executeSourceMapping({
+      mapping: new OtherPrototypeMapping(),
+      envelope: envelope(),
+    });
+
+    expect(first.receipt).toMatchObject({
+      status: "rejected",
+      mappingId: "",
+      humanReviewRequired: true,
+    });
+    expect(second.receipt).toMatchObject({
+      status: "rejected",
+      mappingId: "",
+      humanReviewRequired: true,
+    });
+    expect(second.canonicalRecord.objectRef).toBe("");
+    expect(first.receipt.mappingHash).toBe(second.receipt.mappingHash);
+    expect(first.receipt.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_source_mapping_metadata" }),
+      ])
+    );
+  });
+
   it("fails closed instead of throwing for a schema-valid descriptive mapping", () => {
     const descriptiveMapping: OntologyPackSourceMapping = {
       id: "benefits:legacy_csv_description",
@@ -1172,6 +1233,72 @@ describe("source integration", () => {
 });
 
 describe("canonical record reconciliation", () => {
+  it("rejects prototype-backed authority policies before selection or hashing", () => {
+    class PrototypeAuthorityPolicy implements CanonicalAuthorityPolicy {
+      get policyId() { return "benefits:prototype-policy"; }
+      get policyVersion() { return "1"; }
+      get prioritiesByDomain() {
+        return {
+          claimant_identity: ["authority:master", "authority:secondary"],
+        };
+      }
+    }
+    class ReversePrototypeAuthorityPolicy implements CanonicalAuthorityPolicy {
+      get policyId() { return "benefits:prototype-policy"; }
+      get policyVersion() { return "1"; }
+      get prioritiesByDomain() {
+        return {
+          claimant_identity: ["authority:secondary", "authority:master"],
+        };
+      }
+    }
+    const master = reconciliationResult({
+      recordKey: "prototype-policy-master",
+      authorityRef: "authority:master",
+      displayName: "Ada Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const secondary = reconciliationResult({
+      recordKey: "prototype-policy-secondary",
+      authorityRef: "authority:secondary",
+      displayName: "A. Lovelace",
+      conflictPolicy: "prefer_authority",
+    });
+    const proposal = reconcileCanonicalRecords({
+      results: [master, secondary],
+      authorityPolicy: new PrototypeAuthorityPolicy(),
+    });
+    const reversed = reconcileCanonicalRecords({
+      results: [master, secondary],
+      authorityPolicy: new ReversePrototypeAuthorityPolicy(),
+    });
+
+    for (const result of [proposal, reversed]) {
+      expect(result).toMatchObject({
+        status: "rejected",
+        policyId: "",
+        humanReviewRequired: true,
+      });
+      expect(
+        result.fields.find(
+          ({ propertyRef }) =>
+            propertyRef === "benefits:person.display_name"
+        )
+      ).toMatchObject({ status: "needs_review", selectedValue: null });
+    }
+    expect(proposal.policyHash).toBe(reversed.policyHash);
+    expect(proposal.includedReceiptHashes).toEqual(
+      [master.receipt.receiptHash, secondary.receipt.receiptHash].sort(
+        compareCanonicalStrings
+      )
+    );
+    expect(proposal.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_authority_policy" }),
+      ])
+    );
+  });
+
   function field(
     proposal: ReturnType<typeof reconcileCanonicalRecords>,
     propertyRef = "benefits:person.display_name"
@@ -2110,6 +2237,62 @@ describe("entity resolution", () => {
     },
     { identifier: "birth_date", weight: 0.3 },
   ];
+
+  it("does not match identifiers supplied through prototype getters", () => {
+    class PrototypeIdentifiers {
+      [key: string]: string;
+      get beneficiary_id() { return "AB-123"; }
+      get birth_date() { return "1980-01-02"; }
+    }
+    class OtherPrototypeIdentifiers {
+      [key: string]: string;
+      get beneficiary_id() { return "DIFFERENT"; }
+      get birth_date() { return "1999-12-31"; }
+    }
+    const decision = resolveEntityCandidates({
+      sourceEntityKey: "source:prototype-identifiers",
+      identifiers: new PrototypeIdentifiers(),
+      candidates: [
+        {
+          entityKey: "canonical:prototype-identifiers",
+          identifiers: new PrototypeIdentifiers(),
+        },
+      ],
+      rules,
+      automaticMatchThreshold: 0.9,
+      reviewThreshold: 0.5,
+      ambiguityMargin: 0.1,
+    });
+    const other = resolveEntityCandidates({
+      sourceEntityKey: "source:prototype-identifiers",
+      identifiers: new OtherPrototypeIdentifiers(),
+      candidates: [
+        {
+          entityKey: "canonical:prototype-identifiers",
+          identifiers: new OtherPrototypeIdentifiers(),
+        },
+      ],
+      rules,
+      automaticMatchThreshold: 0.9,
+      reviewThreshold: 0.5,
+      ambiguityMargin: 0.1,
+    });
+
+    expect(decision).toMatchObject({
+      status: "new_entity",
+      targetEntityKey: null,
+      humanReviewRequired: true,
+      candidates: [
+        expect.objectContaining({
+          entityKey: "canonical:prototype-identifiers",
+          score: 0,
+          matchedIdentifiers: [],
+        }),
+      ],
+    });
+    expect(other.status).toBe("new_entity");
+    expect(other.inputHash).toBe(decision.inputHash);
+  });
 
   it("automatically selects one unambiguous candidate without mutating entities", () => {
     const input = {
