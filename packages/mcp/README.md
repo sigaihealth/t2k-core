@@ -36,7 +36,8 @@ deterministic, read-only computation:
 - `propose_entity_link`
 - `evaluate_purpose_limited_access`
 
-The `t2k://capabilities` resource reports the active mode and exact tool set.
+The `t2k://capabilities` resource reports the active mode, exact tool set, and
+public input limits.
 
 ## Evaluate Integration Evidence Without Writing It
 
@@ -84,9 +85,18 @@ execution. Before schema parsing can strip or normalize anything, every nested
 object is recursively inspected by own property descriptor; `__proto__`,
 `prototype`, and `constructor` keys, accessors, symbols, and cyclic object
 graphs fail closed. Ordinary JSON objects and null-prototype data objects remain
-valid. Semantic inconsistencies that pass structural parsing still fail closed
+valid. Calls are also bounded to 32 nested levels, 50,000 traversed nodes,
+10,000 entries per collection, and 1,000,000 characters per string; key batch
+schemas advertise tighter limits where appropriate. Semantic inconsistencies
+that pass structural parsing still fail closed
 in the core result, such as an invalid source-receipt hash or an invalid
 purpose-access request time.
+
+For release-bound compilation, pass `mode: "deployment"`; this permits only
+accepted packs. New reward callers should pass `evidenceMode: "strict"` after
+supplying the method-specific evidence references. Source mapping accepts the
+optional source selectors from the ontology pack plus `expectedMappingHash` to
+pin the exact reviewed mapping revision.
 
 ## Add a Local Lifecycle
 

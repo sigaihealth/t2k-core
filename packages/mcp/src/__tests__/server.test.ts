@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   T2K_MCP_HUMAN_GOVERNANCE_OPERATIONS,
+  T2K_MCP_PUBLIC_INPUT_LIMITS,
   createT2kMcpRuntime,
   type T2kMcpRuntime,
 } from "../server.js";
@@ -148,6 +149,7 @@ interface AdvertisedJsonSchema {
   properties?: Record<string, unknown>;
   additionalProperties?: boolean;
   allOf?: AdvertisedJsonSchema[];
+  maxItems?: number;
 }
 
 function closedWorldObjectSchema(schema: AdvertisedJsonSchema | undefined) {
@@ -271,6 +273,69 @@ describe("T2K MCP semantic mode", () => {
       expect(result.content[0]).toMatchObject({
         type: "text",
         text: expect.stringContaining("referencePolicy"),
+      });
+    } finally {
+      await client.close();
+      await runtime.close();
+    }
+  });
+
+  it("advertises bounded batch contracts and rejects oversized or deeply nested calls", async () => {
+    const runtime = await createT2kMcpRuntime();
+    const client = await connect(runtime);
+
+    try {
+      const listed = await client.listTools();
+      const compileSchema = closedWorldObjectSchema(
+        listed.tools.find((tool) => tool.name === "compile_ontology_pack_set")
+          ?.inputSchema,
+      );
+      expect(compileSchema?.properties).toMatchObject({
+        manifests: expect.objectContaining({ maxItems: 128 }),
+        roots: expect.objectContaining({ maxItems: 64 }),
+      });
+
+      const oversizedEpisodes = Array.from(
+        { length: T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries + 1 },
+        () => null,
+      );
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_replay",
+          arguments: {
+            candidateSpecification: specification,
+            baselineSpecification: specification,
+            episodes: oversizedEpisodes,
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("entry limit"),
+      });
+
+      let deeplyNested: Record<string, unknown> = {};
+      for (
+        let depth = 0;
+        depth < T2K_MCP_PUBLIC_INPUT_LIMITS.maxDepth + 2;
+        depth += 1
+      ) {
+        deeplyNested = { nested: deeplyNested };
+      }
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_policy",
+          arguments: { specification, state: deeplyNested },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("nesting limit"),
+      });
+
+      const capabilities = await client.readResource({
+        uri: "t2k://capabilities",
+      });
+      expect(JSON.parse(capabilities.contents[0]?.text ?? "{}")).toMatchObject({
+        inputLimits: T2K_MCP_PUBLIC_INPUT_LIMITS,
       });
     } finally {
       await client.close();

@@ -3,16 +3,24 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { verifyReleaseTag } from "../../../scripts/verify-release-tag.mjs";
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(
-  await fs.readFile(path.join(packageRoot, "package.json"), "utf8")
+  await fs.readFile(path.join(packageRoot, "package.json"), "utf8"),
 );
-const expectedTag = `mcp-v${manifest.version}`;
-const actualTag = process.env.GITHUB_REF_NAME || process.argv[2];
 
-if (actualTag !== expectedTag) {
-  console.error(`Release tag ${actualTag || "<missing>"} must equal ${expectedTag}.`);
-  process.exit(1);
+try {
+  console.log(
+    verifyReleaseTag({
+      actualTag: process.env.GITHUB_REF_NAME || process.argv[2],
+      expectedTag: `mcp-v${manifest.version}`,
+      mainRef:
+        process.env.T2K_RELEASE_MAIN_REF || process.argv[3] || "origin/main",
+      packageLabel: `@t2kai/mcp ${manifest.version}`,
+    }),
+  );
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 }
-
-console.log(`Release tag ${actualTag} matches @t2kai/mcp ${manifest.version}.`);

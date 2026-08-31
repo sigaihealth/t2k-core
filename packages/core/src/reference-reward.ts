@@ -1,8 +1,10 @@
 import type {
+  JsonObject,
   JsonValue,
   RewardDimensionAssessment,
   RewardDimensionSpec,
 } from "./types.js";
+import { canonicalJson, compareCanonicalStrings } from "./compiler.js";
 import { parseExplicitTimestamp } from "./reference-time.js";
 
 export interface ReferenceRewardObservation {
@@ -11,7 +13,13 @@ export interface ReferenceRewardObservation {
   baselineValue: JsonValue | null;
   observationWindow: string;
   observedAt: string;
+  sourceRefs?: string[];
+  provenance?: JsonObject;
+  attributionConfidence?: number | null;
+  acceptedClaimId?: string | null;
 }
+
+export type ReferenceRewardEvidenceMode = "legacy" | "strict";
 
 export interface ReferenceRewardEvaluation {
   dimensions: RewardDimensionAssessment[];
@@ -51,6 +59,9 @@ function validateRewardSpec(rewardSpec: RewardDimensionSpec[]) {
   const keys = new Set<string>();
   return rewardSpec.map((dimension, index) => {
     const label = `rewardSpec[${index}]`;
+    if (!dimension || typeof dimension !== "object" || Array.isArray(dimension)) {
+      throw new ReferenceRewardError(`${label} must be an object.`);
+    }
     if (!dimension.measureRef?.trim()) {
       throw new ReferenceRewardError(`${label}.measureRef is required.`);
     }
@@ -152,54 +163,170 @@ function aggregateObservation(
         observation.measureRef === spec.measureRef &&
         observation.observationWindow === spec.observationWindow
     )
-    .sort(
-      (left, right) =>
-        new Date(left.observedAt).getTime() - new Date(right.observedAt).getTime()
-    );
+    .sort((left, right) => {
+      const timestampOrder = compareCanonicalStrings(
+        left.observedAt,
+        right.observedAt
+      );
+      return (
+        timestampOrder ||
+        compareCanonicalStrings(canonicalJson(left), canonicalJson(right))
+      );
+    });
   if (matches.length === 0) {
     return {
       observedValue: null as JsonValue | null,
       baselineValue: null as JsonValue | null,
+      matches,
     };
   }
   const latest = matches[matches.length - 1]!;
+  if (spec.aggregation === "latest") {
+    const latestValues = new Set(
+      matches
+        .filter((match) => match.observedAt === latest.observedAt)
+        .map((match) =>
+          canonicalJson({
+            observedValue: match.observedValue,
+            baselineValue: match.baselineValue,
+          })
+        )
+    );
+    if (latestValues.size > 1) {
+      throw new ReferenceRewardError(
+        `Reward dimension ${spec.measureRef} has conflicting latest observations at ${latest.observedAt}.`
+      );
+    }
+    return {
+      observedValue: latest.observedValue,
+      baselineValue: latest.baselineValue,
+      matches,
+    };
+  }
   const observedValues = matches.map((item) => item.observedValue);
   if (
-    spec.aggregation === "latest" ||
     observedValues.some(
       (value) => typeof value !== "number" || !Number.isFinite(value)
     )
   ) {
-    return {
-      observedValue: latest.observedValue,
-      baselineValue: latest.baselineValue,
-    };
+    throw new ReferenceRewardError(
+      `Reward dimension ${spec.measureRef} requires only finite numeric observations for ${spec.aggregation} aggregation.`
+    );
   }
   const baselineValues = matches.map((item) => item.baselineValue);
-  const baselineValue = baselineValues.every(
-    (value) => typeof value === "number" && Number.isFinite(value)
-  )
-    ? aggregateNumbers(baselineValues as number[], spec.aggregation)
-    : latest.baselineValue;
+  const baselineValue = baselineValues.every((value) => value === null)
+    ? null
+    : baselineValues.every(
+          (value) => typeof value === "number" && Number.isFinite(value)
+        )
+      ? aggregateNumbers(baselineValues as number[], spec.aggregation)
+      : (() => {
+          throw new ReferenceRewardError(
+            `Reward dimension ${spec.measureRef} requires baselines to be all finite numbers or all null for ${spec.aggregation} aggregation.`
+          );
+        })();
   return {
     observedValue: aggregateNumbers(
       observedValues as number[],
       spec.aggregation
     ),
     baselineValue,
+    matches,
   };
+}
+
+function hasProvenanceRef(
+  observation: ReferenceRewardObservation,
+  field: string
+) {
+  const value = observation.provenance?.[field];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function strictEvidenceFailure(
+  spec: RewardDimensionSpec,
+  observations: ReferenceRewardObservation[]
+) {
+  if (observations.length === 0) return null;
+  if (
+    spec.baselineMethod === "previous_state" &&
+    !observations.every((observation) =>
+      hasProvenanceRef(observation, "previousStateRef")
+    )
+  ) {
+    return "Previous-state baselines require provenance.previousStateRef on every matched observation.";
+  }
+  if (
+    spec.baselineMethod === "control" &&
+    !observations.every((observation) =>
+      hasProvenanceRef(observation, "controlRef")
+    )
+  ) {
+    return "Control baselines require provenance.controlRef on every matched observation.";
+  }
+  if (
+    spec.baselineMethod === "none" &&
+    (spec.direction === "maximize" || spec.direction === "minimize")
+  ) {
+    return "Directional reward evaluation requires a declared baseline method.";
+  }
+
+  if (spec.attributionMethod === "unknown") {
+    return "Unknown attribution cannot complete strict reward evidence evaluation.";
+  }
+  if (
+    spec.attributionMethod === "direct" &&
+    !observations.every(
+      (observation) =>
+        Boolean(observation.acceptedClaimId?.trim()) ||
+        Boolean(observation.sourceRefs?.some((sourceRef) => sourceRef.trim()))
+    )
+  ) {
+    return "Direct attribution requires a source reference or accepted claim on every matched observation.";
+  }
+  const attributionRefByMethod = {
+    human_review: "humanReviewRef",
+    comparison: "comparisonRef",
+    experiment: "experimentRef",
+  } as const;
+  if (spec.attributionMethod in attributionRefByMethod) {
+    const evidenceRef =
+      attributionRefByMethod[
+        spec.attributionMethod as keyof typeof attributionRefByMethod
+      ];
+    if (
+      !observations.every((observation) =>
+        hasProvenanceRef(observation, evidenceRef)
+      )
+    ) {
+      return `${spec.attributionMethod} attribution requires provenance.${evidenceRef} on every matched observation.`;
+    }
+  }
+  return null;
 }
 
 /** Compute a governed reward vector from observations; callers cannot provide a verdict. */
 export function evaluateReferenceReward(input: {
   rewardSpec: RewardDimensionSpec[];
   observations: ReferenceRewardObservation[];
+  evidenceMode?: ReferenceRewardEvidenceMode;
 }): ReferenceRewardEvaluation {
   const rewardSpec = validateRewardSpec(input.rewardSpec);
+  const evidenceMode = input.evidenceMode ?? "legacy";
+  if (evidenceMode !== "legacy" && evidenceMode !== "strict") {
+    throw new ReferenceRewardError("evidenceMode must be legacy or strict.");
+  }
   if (!Array.isArray(input.observations)) {
     throw new ReferenceRewardError("observations must be an array.");
   }
   const observations = input.observations.map((observation, index) => {
+    if (
+      !observation ||
+      typeof observation !== "object" ||
+      Array.isArray(observation)
+    ) {
+      throw new ReferenceRewardError(`observations[${index}] must be an object.`);
+    }
     if (!observation.measureRef?.trim()) {
       throw new ReferenceRewardError(`observations[${index}].measureRef is required.`);
     }
@@ -232,6 +359,49 @@ export function evaluateReferenceReward(input: {
         `observations[${index}] contains a non-finite number.`
       );
     }
+    if (
+      observation.sourceRefs !== undefined &&
+      (!Array.isArray(observation.sourceRefs) ||
+        observation.sourceRefs.some(
+          (sourceRef) => typeof sourceRef !== "string" || !sourceRef.trim()
+        ))
+    ) {
+      throw new ReferenceRewardError(
+        `observations[${index}].sourceRefs must contain only nonblank strings.`
+      );
+    }
+    if (
+      observation.provenance !== undefined &&
+      (!observation.provenance ||
+        typeof observation.provenance !== "object" ||
+        Array.isArray(observation.provenance))
+    ) {
+      throw new ReferenceRewardError(
+        `observations[${index}].provenance must be an object.`
+      );
+    }
+    if (
+      observation.attributionConfidence !== undefined &&
+      observation.attributionConfidence !== null &&
+      (typeof observation.attributionConfidence !== "number" ||
+        !Number.isFinite(observation.attributionConfidence) ||
+        observation.attributionConfidence < 0 ||
+        observation.attributionConfidence > 1)
+    ) {
+      throw new ReferenceRewardError(
+        `observations[${index}].attributionConfidence must be between zero and one.`
+      );
+    }
+    if (
+      observation.acceptedClaimId !== undefined &&
+      observation.acceptedClaimId !== null &&
+      (typeof observation.acceptedClaimId !== "string" ||
+        !observation.acceptedClaimId.trim())
+    ) {
+      throw new ReferenceRewardError(
+        `observations[${index}].acceptedClaimId must be a nonblank string or null.`
+      );
+    }
     return {
       ...observation,
       measureRef: observation.measureRef.trim(),
@@ -240,10 +410,27 @@ export function evaluateReferenceReward(input: {
     };
   });
   const dimensions: RewardDimensionAssessment[] = rewardSpec.map((spec) => {
-    const { observedValue, baselineValue } = aggregateObservation(
+    const { observedValue, baselineValue, matches } = aggregateObservation(
       spec,
       observations
     );
+    const evidenceFailure =
+      evidenceMode === "strict" ? strictEvidenceFailure(spec, matches) : null;
+    if (evidenceFailure) {
+      return {
+        measureRef: spec.measureRef,
+        direction: spec.direction,
+        observedValue,
+        baselineValue,
+        score: null,
+        weight: spec.weight,
+        weightedScore: null,
+        guardrail: spec.guardrail,
+        guardrailViolated: false,
+        complete: !spec.required,
+        explanation: evidenceFailure,
+      };
+    }
     if (typeof observedValue !== "number" || !Number.isFinite(observedValue)) {
       return {
         measureRef: spec.measureRef,

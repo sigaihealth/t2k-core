@@ -45,10 +45,14 @@ operations.
 
 1. Call `validate_ontology_pack` with a manifest and fix every schema error.
 2. Call `compile_ontology_pack_set` with all local manifests and explicit root
-   requirements. The compiler never fetches undeclared dependencies.
+   requirements. Use `mode: "deployment"` for any release-bound resolution;
+   only accepted packs are eligible. The compiler never fetches undeclared
+   dependencies.
 3. Call `evaluate_reference_policy` with a policy specification and current
    state to compute the proposed action.
-4. Call `evaluate_reference_reward` only after observations are available.
+4. Call `evaluate_reference_reward` only after observations are available. New
+   integrations should use `evidenceMode: "strict"` and provide the
+   method-specific evidence references.
 5. Call `evaluate_reference_replay` with disjoint held-out episodes before a
    human considers promotion.
 
@@ -64,6 +68,9 @@ principals, or enforce disclosure.
 
 Tool results contain both human-readable JSON text and `structuredContent`, so
 hosts can display the result or pass it to another tool without scraping prose.
+Every tool call is bounded by the limits published in `t2k://capabilities`;
+oversized or excessively nested calls fail as invalid MCP parameters before
+semantic evaluation.
 
 See the [integration-hub tutorial](INTEGRATION_HUB_TUTORIAL.md) for the generated
 two-source profile, the three-source browser demo, and the human-plus-AI

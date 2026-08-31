@@ -109,6 +109,13 @@ const nonBlankStringSchema = z
   .refine((value) => value.trim().length > 0, "String must not be blank.");
 const unsafeObjectKeys = new Set(["__proto__", "constructor", "prototype"]);
 
+export const T2K_MCP_PUBLIC_INPUT_LIMITS = Object.freeze({
+  maxDepth: 32,
+  maxNodes: 50_000,
+  maxCollectionEntries: 10_000,
+  maxStringLength: 1_000_000,
+});
+
 interface UnsafeInputSurface {
   message: string;
   path: Array<string | number>;
@@ -117,19 +124,57 @@ interface UnsafeInputSurface {
 function findUnsafeInputSurface(
   value: unknown,
   path: Array<string | number> = [],
-  ancestors = new WeakSet<object>(),
+  state: {
+    ancestors: WeakSet<object>;
+    nodes: number;
+  } = { ancestors: new WeakSet<object>(), nodes: 0 },
 ): UnsafeInputSurface | null {
+  state.nodes += 1;
+  if (state.nodes > T2K_MCP_PUBLIC_INPUT_LIMITS.maxNodes) {
+    return {
+      path,
+      message: `MCP arguments exceed the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxNodes} node limit.`,
+    };
+  }
+  if (path.length > T2K_MCP_PUBLIC_INPUT_LIMITS.maxDepth) {
+    return {
+      path,
+      message: `MCP arguments exceed the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxDepth} level nesting limit.`,
+    };
+  }
+  if (
+    typeof value === "string" &&
+    value.length > T2K_MCP_PUBLIC_INPUT_LIMITS.maxStringLength
+  ) {
+    return {
+      path,
+      message: `MCP string exceeds the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxStringLength} character limit.`,
+    };
+  }
   if (value === null || typeof value !== "object") return null;
-  if (ancestors.has(value)) {
+  if (state.ancestors.has(value)) {
     return {
       path,
       message: "Cyclic input objects are not valid MCP JSON arguments.",
     };
   }
 
-  ancestors.add(value);
+  const keys = Reflect.ownKeys(value);
+  const collectionEntries = Array.isArray(value)
+    ? value.length
+    : keys.length;
+  if (
+    collectionEntries > T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries
+  ) {
+    return {
+      path,
+      message: `MCP collection exceeds the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries} entry limit.`,
+    };
+  }
+
+  state.ancestors.add(value);
   try {
-    for (const key of Reflect.ownKeys(value)) {
+    for (const key of keys) {
       if (typeof key === "symbol") {
         return {
           path,
@@ -166,12 +211,12 @@ function findUnsafeInputSurface(
       const nestedIssue = findUnsafeInputSurface(
         descriptor.value,
         propertyPath,
-        ancestors,
+        state,
       );
       if (nestedIssue) return nestedIssue;
     }
   } finally {
-    ancestors.delete(value);
+    state.ancestors.delete(value);
   }
   return null;
 }
@@ -322,6 +367,9 @@ const sourceMappingSchema = z
     mappingVersion: nonBlankStringSchema.optional(),
     sourceType: nonBlankStringSchema,
     sourceLocator: nonBlankStringSchema,
+    sourceSystem: nonBlankStringSchema.optional(),
+    sourceLocatorMatch: z.enum(["exact", "prefix"]).optional(),
+    acceptedAuthorityRefs: nonEmptyUniqueStringsSchema.optional(),
     sourceSchemaVersion: nonBlankStringSchema.optional(),
     fields: z.string().optional(),
     object: nonBlankStringSchema,
@@ -408,9 +456,11 @@ const governedSourceMappingToolInputSchema = guardedObjectInputSchema(
   {
     mapping: sourceMappingSchema,
     envelope: federatedSourceEnvelopeSchema,
+    expectedMappingHash: sha256Schema.optional(),
     latestAcceptedEventTime: nonBlankStringSchema.nullable().optional(),
     acceptedIdempotencyRecords: z
       .array(acceptedIdempotencyRecordSchema)
+      .max(T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries)
       .optional(),
   },
   { strict: true },
@@ -645,6 +695,7 @@ export interface T2kMcpCapabilities {
   actor: ReferenceLifecycleActor | null;
   tools: string[];
   omittedHumanGovernanceOperations: string[];
+  inputLimits: typeof T2K_MCP_PUBLIC_INPUT_LIMITS;
 }
 
 export interface CreateT2kMcpRuntimeOptions {
@@ -741,13 +792,14 @@ function registerSemanticTools(
       description:
         "Resolve and compile ontology-pack manifests deterministically from explicit roots and context values.",
       inputSchema: guardedObjectInputSchema({
-        manifests: z.array(z.unknown()),
+        manifests: z.array(z.unknown()).max(128),
         roots: z.array(
           z.object({
             ontologyId: z.string().min(1),
             version: z.string().min(1),
           }),
-        ),
+        ).max(64),
+        mode: z.enum(["authoring", "deployment"]).optional(),
         contextValues: jsonObjectSchema.optional(),
       }),
       outputSchema,
@@ -758,6 +810,7 @@ function registerSemanticTools(
       (input: {
         manifests: unknown[];
         roots: Array<{ ontologyId: string; version: string }>;
+        mode?: "authoring" | "deployment";
         contextValues?: Record<string, unknown>;
       }) => compileOntologyPackSet(input as CompileOntologyPackSetInput),
     ),
@@ -798,7 +851,10 @@ function registerSemanticTools(
       inputSchema: guardedObjectInputSchema({
         candidateSpecification: jsonObjectSchema,
         baselineSpecification: jsonObjectSchema,
-        episodes: z.array(z.unknown()).min(1),
+        episodes: z
+          .array(z.unknown())
+          .min(1)
+          .max(T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries),
       }),
       outputSchema,
       annotations: readOnlyAnnotations,
@@ -825,18 +881,26 @@ function registerSemanticTools(
       description:
         "Compute a reward vector and guardrail-aware scalar from a declared reward specification and observations.",
       inputSchema: guardedObjectInputSchema({
-        rewardSpec: z.array(z.unknown()).min(1),
-        observations: z.array(z.unknown()),
+        rewardSpec: z.array(z.unknown()).min(1).max(256),
+        observations: z
+          .array(z.unknown())
+          .max(T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries),
+        evidenceMode: z.enum(["legacy", "strict"]).optional(),
       }),
       outputSchema,
       annotations: readOnlyAnnotations,
     },
     protectedTool(
       logger,
-      (input: { rewardSpec: unknown[]; observations: unknown[] }) =>
+      (input: {
+        rewardSpec: unknown[];
+        observations: unknown[];
+        evidenceMode?: "legacy" | "strict";
+      }) =>
         evaluateReferenceReward({
           rewardSpec: input.rewardSpec as RewardDimensionSpec[],
           observations: input.observations as ReferenceRewardObservation[],
+          evidenceMode: input.evidenceMode,
         }),
     ),
   );
@@ -857,6 +921,7 @@ function registerSemanticTools(
         executeSourceMapping({
           mapping: input.mapping as OntologyPackSourceMapping,
           envelope: input.envelope as FederatedSourceEnvelope,
+          expectedMappingHash: input.expectedMappingHash,
           latestAcceptedEventTime: input.latestAcceptedEventTime,
           acceptedIdempotencyRecords: input.acceptedIdempotencyRecords as
             AcceptedIdempotencyRecord[] | undefined,
@@ -1440,6 +1505,7 @@ export async function createT2kMcpRuntime(
     actor,
     tools: [...tools],
     omittedHumanGovernanceOperations: [...T2K_MCP_HUMAN_GOVERNANCE_OPERATIONS],
+    inputLimits: T2K_MCP_PUBLIC_INPUT_LIMITS,
   };
   const server = new McpServer({
     name: options.serverName ?? "t2k-mcp",

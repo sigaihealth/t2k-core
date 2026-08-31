@@ -106,6 +106,29 @@ describe("source-mapping compiler integrity", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("parses compatibility-optional executable source bindings", () => {
+    const manifest = baseManifest();
+    const mapping = manifest.sourceMappings[0] as (typeof manifest.sourceMappings)[number] & {
+      sourceSystem: string;
+      sourceLocatorMatch: "prefix";
+      acceptedAuthorityRefs: string[];
+    };
+    mapping.sourceSystem = "synthetic-person-api";
+    mapping.sourceLocatorMatch = "prefix";
+    mapping.acceptedAuthorityRefs = ["authority:synthetic-person-api"];
+
+    expect(validateOntologyPackManifest(manifest)).toEqual({
+      valid: true,
+      errors: [],
+    });
+    expect(parseOntologyPackManifest(manifest)?.sourceMappings[0]).toMatchObject({
+      sourceSystem: "synthetic-person-api",
+      sourceLocatorMatch: "prefix",
+      acceptedAuthorityRefs: ["authority:synthetic-person-api"],
+    });
+    expect(compile(manifest).status).toBe("valid");
+  });
+
   it("rejects dangling mapping and event objects", () => {
     const manifest = baseManifest();
     manifest.sourceMappings[0].object = "missing_person";

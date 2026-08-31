@@ -80,6 +80,9 @@
       "mappingVersion": "1.0.0",
       "sourceType": "case_api",
       "sourceLocator": "synthetic://state-benefits/cases",
+      "sourceSystem": "synthetic-state-benefits",
+      "sourceLocatorMatch": "prefix",
+      "acceptedAuthorityRefs": ["authority:state-benefits"],
       "sourceSchemaVersion": "state-case-v1",
       "object": "benefits_person",
       "fieldMappings": [
@@ -148,6 +151,9 @@
       "mappingVersion": "2.1.0",
       "sourceType": "case_export",
       "sourceLocator": "synthetic://county-services/households",
+      "sourceSystem": "synthetic-county-services",
+      "sourceLocatorMatch": "prefix",
+      "acceptedAuthorityRefs": ["authority:county-services"],
       "sourceSchemaVersion": "county-household-v2",
       "object": "benefits_person",
       "fieldMappings": [
@@ -214,6 +220,9 @@
       "mappingVersion": "1.3.0",
       "sourceType": "wage_match",
       "sourceLocator": "synthetic://state-labor/wage-matches",
+      "sourceSystem": "synthetic-state-labor",
+      "sourceLocatorMatch": "prefix",
+      "acceptedAuthorityRefs": ["authority:state-labor"],
       "sourceSchemaVersion": "wage-match-v1",
       "object": "benefits_person",
       "fieldMappings": [

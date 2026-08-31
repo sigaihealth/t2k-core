@@ -104,6 +104,10 @@ export interface OntologyPackSourceMapping {
   mappingVersion?: string;
   sourceType: string;
   sourceLocator: string;
+  /** Optional executable binding; omitted legacy mappings retain locator metadata only. */
+  sourceSystem?: string;
+  sourceLocatorMatch?: "exact" | "prefix";
+  acceptedAuthorityRefs?: string[];
   sourceSchemaVersion?: string;
   fields: string;
   sheet: string;
@@ -573,6 +577,21 @@ export function parseOntologyPackManifest(
           : {}),
         sourceType: readString(item.sourceType),
         sourceLocator: readString(item.sourceLocator),
+        ...(Object.hasOwn(item, "sourceSystem")
+          ? { sourceSystem: readString(item.sourceSystem) }
+          : {}),
+        ...(Object.hasOwn(item, "sourceLocatorMatch")
+          ? {
+              sourceLocatorMatch: (["exact", "prefix"].includes(
+                readString(item.sourceLocatorMatch)
+              )
+                ? readString(item.sourceLocatorMatch)
+                : "exact") as OntologyPackSourceMapping["sourceLocatorMatch"],
+            }
+          : {}),
+        ...(Object.hasOwn(item, "acceptedAuthorityRefs")
+          ? { acceptedAuthorityRefs: readStringArray(item.acceptedAuthorityRefs) }
+          : {}),
         ...(Object.hasOwn(item, "sourceSchemaVersion")
           ? { sourceSchemaVersion: readString(item.sourceSchemaVersion) }
           : {}),

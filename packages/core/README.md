@@ -37,6 +37,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 const result = compileOntologyPackSet({
   manifests: [corePack, fieldServicePack],
   roots: [{ ontologyId: "demo.harborlight-field-service", version: "^1.0.0" }],
+  mode: "deployment",
   contextValues: {},
 });
 
@@ -47,8 +48,12 @@ if (result.status === "invalid") {
 console.log(result.resolutionHash);
 ```
 
-The compiler never fetches dependencies implicitly. Equivalent semantic input
-produces identical resolution and definition hashes.
+The compiler never fetches dependencies implicitly. `authoring` is the
+backward-compatible default and may resolve draft packs. `deployment` resolves
+only packs whose lifecycle status is `accepted`; a compatible draft cannot
+silently shadow an accepted version or enter a deployment resolution.
+Equivalent semantic input in the same mode produces identical resolution and
+definition hashes.
 
 ## Validate the Standard
 
@@ -87,6 +92,7 @@ const compilation = parsedPack
         ontologyId: parsedPack.ontologyId,
         version: parsedPack.ontologyVersion,
       }],
+      mode: "deployment",
     })
   : null;
 if (!parsedPack || compilation?.status !== "valid") {
@@ -98,6 +104,7 @@ if (!mapping?.fieldMappings?.length) {
 }
 const result = executeSourceMapping({
   mapping,
+  expectedMappingHash: registrySelection.mappingHash,
   envelope: {
     sourceSystem: "agency.case-api",
     sourceLocator: "case-api/cases/483",
@@ -133,6 +140,13 @@ times, source authentication assertion, authority reference, classification,
 purpose and retention metadata, lateness, duplicate state, issues, and a hash
 of the receipt. Each mapped field retains its source path, source-value hash,
 mapping identity, authority domain, and the same source-control metadata.
+
+Executable mappings can opt into source binding with `sourceSystem`,
+`sourceLocatorMatch` (`exact` or path-segment-safe `prefix`), and
+`acceptedAuthorityRefs`. Legacy mappings that omit these selectors retain
+their prior behavior. New integrations should declare them and pin the
+independently resolved revision with `expectedMappingHash`; every selector is
+itself covered by the computed mapping hash.
 
 Treat an envelope as immutable once it has been mapped. A later observation is
 a new envelope: keep the prior file or event, use a new locator, source-record
@@ -348,8 +362,17 @@ const replay = evaluateReferenceReplay({
 ```
 
 Replay reports action coverage, paired confidence bounds, low-sample warnings,
-and guardrail violations. It does not invent outcomes for actions missing from
-the log.
+and guardrail violations. It rejects blank episode IDs and both duplicate and
+conflicting reuse of an episode ID, so repeated evidence cannot inflate sample
+size or confidence. It does not invent outcomes for actions missing from the
+log.
+
+`evaluateReferenceReward` rejects conflicting observations tied for the latest
+timestamp and mixed-type `sum`, `average`, `minimum`, or `maximum`
+aggregations. Set `evidenceMode: "strict"` for new workflows to require the
+method-specific source, human-review, comparison, experiment, previous-state,
+or control reference declared by the reward contract. The default remains
+`legacy` so existing stored observations can be assessed during migration.
 
 ## Persist the Governed Lifecycle
 

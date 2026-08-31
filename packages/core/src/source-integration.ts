@@ -115,6 +115,8 @@ export interface SourceMappingReceipt {
 export interface ExecuteSourceMappingInput {
   mapping: OntologyPackSourceMapping;
   envelope: FederatedSourceEnvelope;
+  /** Pin execution to an independently resolved mapping revision. */
+  expectedMappingHash?: string;
   latestAcceptedEventTime?: string | null;
   /** @deprecated A key alone cannot prove an exact replay; use acceptedIdempotencyRecords. */
   seenIdempotencyKeys?: readonly string[];
@@ -624,6 +626,13 @@ export function executeSourceMapping(
     typeof mapping.sourceSchemaVersion === "string"
       ? mapping.sourceSchemaVersion
       : "";
+  const declaredSourceSystem =
+    typeof mapping.sourceSystem === "string" ? mapping.sourceSystem : "";
+  const declaredSourceLocator =
+    typeof mapping.sourceLocator === "string" ? mapping.sourceLocator : "";
+  const declaredAuthorityRefs = Array.isArray(mapping.acceptedAuthorityRefs)
+    ? mapping.acceptedAuthorityRefs.filter(isNonblankString)
+    : [];
   const objectRef = typeof mapping.object === "string" ? mapping.object : "";
 
   if (
@@ -640,6 +649,28 @@ export function executeSourceMapping(
         "invalid_source_mapping_metadata",
         "error",
         "Executable mappings require a namespaced mapping ID and object plus nonblank source type, locator, authority, and review status."
+      )
+    );
+  }
+  const sourceBindingValid =
+    (mapping.sourceSystem === undefined ||
+      isNonblankString(mapping.sourceSystem)) &&
+    (mapping.sourceLocatorMatch === undefined ||
+      (isNonblankString(mapping.sourceLocator) &&
+        (mapping.sourceLocatorMatch === "exact" ||
+          mapping.sourceLocatorMatch === "prefix"))) &&
+    (mapping.acceptedAuthorityRefs === undefined ||
+      (Array.isArray(mapping.acceptedAuthorityRefs) &&
+        mapping.acceptedAuthorityRefs.length > 0 &&
+        mapping.acceptedAuthorityRefs.every(isNonblankString) &&
+        new Set(mapping.acceptedAuthorityRefs).size ===
+          mapping.acceptedAuthorityRefs.length));
+  if (!sourceBindingValid) {
+    issues.push(
+      issue(
+        "invalid_source_binding",
+        "error",
+        "Source bindings require a nonblank source system, exact or prefix locator matching, and unique nonblank accepted authority references."
       )
     );
   }
@@ -837,6 +868,76 @@ export function executeSourceMapping(
     targetIdentity: [...targetIdentity].sort(compareCanonicalStrings),
   });
   const sourcePayloadHash = semanticHash(envelope.payload);
+
+  if (
+    mapping.sourceSystem !== undefined &&
+    declaredSourceSystem !== envelope.sourceSystem
+  ) {
+    issues.push(
+      issue(
+        "source_system_mismatch",
+        "error",
+        `Mapping ${mappingId} is bound to source system ${declaredSourceSystem}; received ${envelope.sourceSystem}.`
+      )
+    );
+  }
+  const sourceLocatorMatches =
+    mapping.sourceLocatorMatch === "exact"
+      ? envelope.sourceLocator === declaredSourceLocator
+      : mapping.sourceLocatorMatch === "prefix"
+        ? envelope.sourceLocator === declaredSourceLocator ||
+          envelope.sourceLocator.startsWith(
+            declaredSourceLocator.endsWith("/")
+              ? declaredSourceLocator
+              : `${declaredSourceLocator}/`
+          )
+        : true;
+  if (!sourceLocatorMatches) {
+    issues.push(
+      issue(
+        "source_locator_mismatch",
+        "error",
+        `Mapping ${mappingId} does not permit source locator ${envelope.sourceLocator}.`
+      )
+    );
+  }
+  if (
+    mapping.acceptedAuthorityRefs !== undefined &&
+    !declaredAuthorityRefs.includes(envelope.authorityRef)
+  ) {
+    issues.push(
+      issue(
+        "source_authority_mismatch",
+        "error",
+        `Mapping ${mappingId} does not permit source authority ${envelope.authorityRef}.`
+      )
+    );
+  }
+  const expectedMappingHash = inputRecord.expectedMappingHash;
+  if (
+    expectedMappingHash !== undefined &&
+    (typeof expectedMappingHash !== "string" ||
+      !SHA256_HEX.test(expectedMappingHash))
+  ) {
+    issues.push(
+      issue(
+        "invalid_expected_mapping_hash",
+        "error",
+        "The expected mapping hash must be a lowercase SHA-256 digest."
+      )
+    );
+  } else if (
+    typeof expectedMappingHash === "string" &&
+    expectedMappingHash !== mappingHash
+  ) {
+    issues.push(
+      issue(
+        "mapping_hash_mismatch",
+        "error",
+        "The resolved mapping does not match the caller-pinned mapping hash."
+      )
+    );
+  }
 
   if (
     envelope.contentHash !== undefined &&

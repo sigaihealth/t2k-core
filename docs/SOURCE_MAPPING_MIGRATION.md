@@ -32,6 +32,11 @@ Keep the existing mapping ID and add:
 6. optional event and observation time paths whose values always include `Z`
    or a numeric UTC offset. Control paths must select a field below `$`; the
    payload root is not a valid idempotency or time selector.
+7. for new integrations, `sourceSystem`, `sourceLocatorMatch`, and
+   `acceptedAuthorityRefs`, then pass the registry-selected mapping hash as
+   `expectedMappingHash` at execution. These selectors are optional for legacy
+   compatibility but prevent a schema-compatible envelope from another source
+   or authority from being routed through the mapping.
 
 Idempotency values must be nonblank, finite, and contain evidence at every
 composite level. Empty arrays and objects are invalid. Persist the accepted

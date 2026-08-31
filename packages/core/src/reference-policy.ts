@@ -397,11 +397,32 @@ export function evaluateReferenceReplay(input: {
 }): ReferenceReplayResult {
   const candidate = parseReferencePolicySpecification(input.candidateSpecification);
   const baseline = parseReferencePolicySpecification(input.baselineSpecification);
-  if (input.episodes.length === 0) {
+  if (!Array.isArray(input.episodes) || input.episodes.length === 0) {
     throw new ReferencePolicyError("Computed replay requires at least one held-out episode.");
   }
   const warnings: string[] = [];
-  const episodes = input.episodes.map((episode) => {
+  const episodeIdentities = new Map<string, string>();
+  const episodes = input.episodes.map((episode, index) => {
+    if (!episode || typeof episode !== "object" || Array.isArray(episode)) {
+      throw new ReferencePolicyError(
+        `Replay episode ${index + 1} must be an object.`
+      );
+    }
+    const episodeId =
+      typeof episode.episodeId === "string" ? episode.episodeId.trim() : "";
+    if (!episodeId) {
+      throw new ReferencePolicyError("Every replay episode requires a nonblank episode ID.");
+    }
+    const episodeHash = canonicalJson({ ...episode, episodeId });
+    const existingEpisodeHash = episodeIdentities.get(episodeId);
+    if (existingEpisodeHash !== undefined) {
+      throw new ReferencePolicyError(
+        existingEpisodeHash === episodeHash
+          ? `Replay episode ID ${episodeId} is duplicated.`
+          : `Replay episode ID ${episodeId} identifies conflicting episode evidence.`
+      );
+    }
+    episodeIdentities.set(episodeId, episodeHash);
     if (!Number.isFinite(episode.scalarReward)) {
       throw new ReferencePolicyError(
         `Episode ${episode.episodeId} does not have a finite scalar reward.`
@@ -422,7 +443,7 @@ export function evaluateReferenceReplay(input: {
         `Episode ${episode.episodeId} has an invalid behavior probability.`
       );
     }
-    return { ...episode, probability };
+    return { ...episode, episodeId, probability };
   });
   const candidateActions = episodes.map((episode) =>
     evaluateReferencePolicy(candidate, episode.state)
