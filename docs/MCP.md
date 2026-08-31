@@ -21,7 +21,7 @@ integration results persistent.
 ## Install and Check
 
 ```bash
-npx -y @t2kai/mcp@0.3.0 --help
+npx -y @t2kai/mcp@0.3.1 --help
 ```
 
 Add the server to the host's MCP server map:
@@ -31,7 +31,7 @@ Add the server to the host's MCP server map:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.0"]
+      "args": ["-y", "@t2kai/mcp@0.3.1"]
     }
   }
 }
@@ -110,7 +110,7 @@ Automatic migration is disabled by default:
 ```bash
 export T2K_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/t2k'
 export T2K_MCP_AUTO_MIGRATE=true
-npx -y @t2kai/mcp@0.3.0
+npx -y @t2kai/mcp@0.3.1
 ```
 
 For production-like use, run migration in a controlled deployment step and

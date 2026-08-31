@@ -49,7 +49,7 @@ network, private packs, and customer data are separate products.
 Requirements: Node.js 20.10 or newer and npm.
 
 ```bash
-npx create-t2k@0.4.3 my-decision-loop
+npx create-t2k@0.4.4 my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -73,7 +73,7 @@ to delete the disposable lifecycle data.
 Generate a governed integration-hub project instead:
 
 ```bash
-npx create-t2k@0.4.3 my-integration-hub --profile integration-hub
+npx create-t2k@0.4.4 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -154,7 +154,7 @@ Connect an MCP host without a database or credentials:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.0"]
+      "args": ["-y", "@t2kai/mcp@0.3.1"]
     }
   }
 }
@@ -176,8 +176,8 @@ The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm install @t2kai/core@0.4.3
-npm install @t2kai/mcp@0.3.0
+npm install @t2kai/core@0.4.4
+npm install @t2kai/mcp@0.3.1
 ```
 
 ```ts
@@ -195,7 +195,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.4.3` includes the governed source-mapping,
+`@t2kai/core@0.4.4` includes the governed source-mapping,
 canonical-reconciliation, entity-resolution, and purpose-access exports plus
 the persisted reconciliation review and lineage path documented in the core
 guide.

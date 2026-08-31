@@ -17,7 +17,7 @@ Use this standard MCP host configuration:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.0"]
+      "args": ["-y", "@t2kai/mcp@0.3.1"]
     }
   }
 }
@@ -107,7 +107,7 @@ Set `T2K_DATABASE_URL` to expose lifecycle inspection without enabling writes:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.0"],
+      "args": ["-y", "@t2kai/mcp@0.3.1"],
       "env": {
         "T2K_DATABASE_URL": "postgresql://postgres:postgres@127.0.0.1:5432/t2k",
         "T2K_MCP_AUTO_MIGRATE": "true"
