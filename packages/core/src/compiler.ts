@@ -586,6 +586,16 @@ function buildDefinitions(
     manifest.sourceMappings.forEach((mapping, mappingIndex) => {
       const fieldMappings = mapping.fieldMappings ?? [];
       const targetIdentity = mapping.targetIdentity ?? [];
+      const acceptedAuthorityRefs = mapping.acceptedAuthorityRefs ?? [];
+      if (new Set(acceptedAuthorityRefs).size !== acceptedAuthorityRefs.length) {
+        addDiagnostic(diagnostics, {
+          level: "error",
+          code: "duplicate_source_mapping_authority_ref",
+          ontologyId: manifest.ontologyId,
+          path: `sourceMappings.${mappingIndex}.acceptedAuthorityRefs`,
+          message: `Source mapping ${mapping.id} repeats an accepted authority reference after normalization.`,
+        });
+      }
       const executable =
         mapping.fieldMappings !== undefined ||
         mapping.mappingVersion !== undefined ||
@@ -1052,13 +1062,22 @@ export function compileOntologyPackSet(
   input: CompileOntologyPackSetInput
 ): CompiledOntologyPackSet {
   const diagnostics: PackCompilerDiagnostic[] = [];
-  const mode = input.mode ?? "authoring";
-  if (mode !== "authoring" && mode !== "deployment") {
+  const requestedMode: unknown = input.mode;
+  const mode: OntologyCompilationMode =
+    requestedMode === undefined || requestedMode === "authoring"
+      ? "authoring"
+      : "deployment";
+  if (
+    requestedMode !== undefined &&
+    requestedMode !== "authoring" &&
+    requestedMode !== "deployment"
+  ) {
     addDiagnostic(diagnostics, {
       level: "error",
       code: "invalid_compilation_mode",
       path: "mode",
-      message: "Compilation mode must be authoring or deployment.",
+      message:
+        "Compilation mode must be authoring or deployment; invalid runtime values fail closed as deployment.",
     });
   }
   const parsedManifests: OntologyPackManifest[] = [];

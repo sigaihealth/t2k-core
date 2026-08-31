@@ -407,6 +407,42 @@ function sourceFieldMappings(mapping: OntologyPackSourceMapping) {
   );
 }
 
+function normalizedAcceptedAuthorityReferences(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .filter(
+          (reference): reference is string => typeof reference === "string"
+        )
+        .map((reference) => reference.trim())
+        .filter(Boolean)
+    : [];
+}
+
+/** Compute the canonical hash callers can pin before executing a mapping. */
+export function canonicalSourceMappingHash(
+  mapping: OntologyPackSourceMapping
+): string {
+  const rawTargetIdentity = Array.isArray(mapping.targetIdentity)
+    ? mapping.targetIdentity
+    : [];
+  const targetIdentity = rawTargetIdentity.filter(isNonblankString);
+  const rawAuthorityReferences = (
+    mapping as unknown as Record<string, unknown>
+  ).acceptedAuthorityRefs;
+  return semanticHash({
+    ...mapping,
+    ...(rawAuthorityReferences === undefined
+      ? {}
+      : {
+          acceptedAuthorityRefs: normalizedAcceptedAuthorityReferences(
+            rawAuthorityReferences
+          ).sort(compareCanonicalStrings),
+        }),
+    fieldMappings: sourceFieldMappings(mapping),
+    targetIdentity: [...targetIdentity].sort(compareCanonicalStrings),
+  });
+}
+
 function sourceLeafPaths(value: JsonValue, path = "$"): string[] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return [path];
@@ -630,9 +666,9 @@ export function executeSourceMapping(
     typeof mapping.sourceSystem === "string" ? mapping.sourceSystem : "";
   const declaredSourceLocator =
     typeof mapping.sourceLocator === "string" ? mapping.sourceLocator : "";
-  const declaredAuthorityRefs = Array.isArray(mapping.acceptedAuthorityRefs)
-    ? mapping.acceptedAuthorityRefs.filter(isNonblankString)
-    : [];
+  const declaredAuthorityRefs = normalizedAcceptedAuthorityReferences(
+    mapping.acceptedAuthorityRefs
+  );
   const objectRef = typeof mapping.object === "string" ? mapping.object : "";
 
   if (
@@ -663,7 +699,7 @@ export function executeSourceMapping(
       (Array.isArray(mapping.acceptedAuthorityRefs) &&
         mapping.acceptedAuthorityRefs.length > 0 &&
         mapping.acceptedAuthorityRefs.every(isNonblankString) &&
-        new Set(mapping.acceptedAuthorityRefs).size ===
+        new Set(declaredAuthorityRefs).size ===
           mapping.acceptedAuthorityRefs.length));
   if (!sourceBindingValid) {
     issues.push(
@@ -862,11 +898,7 @@ export function executeSourceMapping(
     }
   }
 
-  const mappingHash = semanticHash({
-    ...mapping,
-    fieldMappings,
-    targetIdentity: [...targetIdentity].sort(compareCanonicalStrings),
-  });
+  const mappingHash = canonicalSourceMappingHash(mapping);
   const sourcePayloadHash = semanticHash(envelope.payload);
 
   if (

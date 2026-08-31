@@ -280,16 +280,48 @@ function formatValidationError(
   };
 }
 
-/** Validate a current T2K manifest against the exact published JSON Schema. */
+function normalizedAuthorityReferenceErrors(
+  value: unknown
+): OntologyPackManifestValidationError[] {
+  if (!isRecord(value) || !Array.isArray(value.sourceMappings)) return [];
+
+  const errors: OntologyPackManifestValidationError[] = [];
+  value.sourceMappings.forEach((rawMapping, mappingIndex) => {
+    if (
+      !isRecord(rawMapping) ||
+      !Array.isArray(rawMapping.acceptedAuthorityRefs)
+    ) {
+      return;
+    }
+    const seen = new Set<string>();
+    rawMapping.acceptedAuthorityRefs.forEach((rawReference, referenceIndex) => {
+      if (typeof rawReference !== "string") return;
+      const normalized = rawReference.trim();
+      if (seen.has(normalized)) {
+        errors.push({
+          path: `/sourceMappings/${mappingIndex}/acceptedAuthorityRefs/${referenceIndex}`,
+          keyword: "uniqueItems",
+          message:
+            "must not duplicate another authority reference after trimming",
+        });
+      }
+      seen.add(normalized);
+    });
+  });
+  return errors;
+}
+
+/** Validate a current T2K manifest and its normalization invariants. */
 export function validateOntologyPackManifest(
   value: unknown
 ): OntologyPackManifestValidationResult {
-  const valid = ontologyPackValidator(value);
+  const schemaValid = ontologyPackValidator(value);
+  const errors = schemaValid
+    ? normalizedAuthorityReferenceErrors(value)
+    : (ontologyPackValidator.errors ?? []).map(formatValidationError);
   return {
-    valid,
-    errors: valid
-      ? []
-      : (ontologyPackValidator.errors ?? []).map(formatValidationError),
+    valid: schemaValid && errors.length === 0,
+    errors,
   };
 }
 

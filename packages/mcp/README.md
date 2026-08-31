@@ -86,8 +86,10 @@ object is recursively inspected by own property descriptor; `__proto__`,
 `prototype`, and `constructor` keys, accessors, symbols, and cyclic object
 graphs fail closed. Ordinary JSON objects and null-prototype data objects remain
 valid. Calls are also bounded to 32 nested levels, 50,000 traversed nodes,
-10,000 entries per collection, and 1,000,000 characters per string; key batch
-schemas advertise tighter limits where appropriate. Semantic inconsistencies
+10,000 entries per collection, 8,192 characters per property key, 1,000,000
+characters per string value, and 2,000,000 total characters across property
+keys and string values. Key batch schemas advertise tighter limits where
+appropriate. Semantic inconsistencies
 that pass structural parsing still fail closed
 in the core result, such as an invalid source-receipt hash or an invalid
 purpose-access request time.

@@ -69,8 +69,10 @@ principals, or enforce disclosure.
 Tool results contain both human-readable JSON text and `structuredContent`, so
 hosts can display the result or pass it to another tool without scraping prose.
 Every tool call is bounded by the limits published in `t2k://capabilities`;
-oversized or excessively nested calls fail as invalid MCP parameters before
-semantic evaluation.
+the current public ceiling includes 8,192 characters per property key,
+1,000,000 per string value, and 2,000,000 total characters across property
+keys and string values. Oversized or excessively nested calls fail as invalid
+MCP parameters before semantic evaluation.
 
 See the [integration-hub tutorial](INTEGRATION_HUB_TUTORIAL.md) for the generated
 two-source profile, the three-source browser demo, and the human-plus-AI

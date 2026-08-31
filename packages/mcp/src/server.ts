@@ -113,7 +113,9 @@ export const T2K_MCP_PUBLIC_INPUT_LIMITS = Object.freeze({
   maxDepth: 32,
   maxNodes: 50_000,
   maxCollectionEntries: 10_000,
+  maxPropertyKeyLength: 8_192,
   maxStringLength: 1_000_000,
+  maxTotalTextCharacters: 2_000_000,
 });
 
 interface UnsafeInputSurface {
@@ -127,7 +129,8 @@ function findUnsafeInputSurface(
   state: {
     ancestors: WeakSet<object>;
     nodes: number;
-  } = { ancestors: new WeakSet<object>(), nodes: 0 },
+    textCharacters: number;
+  } = { ancestors: new WeakSet<object>(), nodes: 0, textCharacters: 0 },
 ): UnsafeInputSurface | null {
   state.nodes += 1;
   if (state.nodes > T2K_MCP_PUBLIC_INPUT_LIMITS.maxNodes) {
@@ -150,6 +153,18 @@ function findUnsafeInputSurface(
       path,
       message: `MCP string exceeds the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxStringLength} character limit.`,
     };
+  }
+  if (typeof value === "string") {
+    state.textCharacters += value.length;
+    if (
+      state.textCharacters >
+      T2K_MCP_PUBLIC_INPUT_LIMITS.maxTotalTextCharacters
+    ) {
+      return {
+        path,
+        message: `MCP argument text exceeds the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxTotalTextCharacters} total character limit.`,
+      };
+    }
   }
   if (value === null || typeof value !== "object") return null;
   if (state.ancestors.has(value)) {
@@ -181,6 +196,28 @@ function findUnsafeInputSurface(
           message:
             "Symbol-keyed input properties are not valid MCP JSON arguments.",
         };
+      }
+      const isArrayStructuralKey =
+        Array.isArray(value) && (key === "length" || /^\d+$/.test(key));
+      if (!isArrayStructuralKey) {
+        if (
+          key.length > T2K_MCP_PUBLIC_INPUT_LIMITS.maxPropertyKeyLength
+        ) {
+          return {
+            path,
+            message: `MCP property key exceeds the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxPropertyKeyLength} character limit.`,
+          };
+        }
+        state.textCharacters += key.length;
+        if (
+          state.textCharacters >
+          T2K_MCP_PUBLIC_INPUT_LIMITS.maxTotalTextCharacters
+        ) {
+          return {
+            path,
+            message: `MCP argument text exceeds the ${T2K_MCP_PUBLIC_INPUT_LIMITS.maxTotalTextCharacters} total character limit.`,
+          };
+        }
       }
       const segment =
         Array.isArray(value) && /^\d+$/.test(key) ? Number(key) : key;
@@ -303,6 +340,7 @@ function installRawToolCallOwnKeyGuard(server: McpServer) {
 
 const safeObjectKeySchema = z
   .string()
+  .max(T2K_MCP_PUBLIC_INPUT_LIMITS.maxPropertyKeyLength)
   .refine(
     (value) => !unsafeObjectKeys.has(value),
     "Unsafe object key is not allowed.",
@@ -326,11 +364,14 @@ const strictJsonObjectSchema = z.record(
   safeObjectKeySchema,
   strictJsonValueSchema,
 );
+const normalizedNonBlankStringSchema = nonBlankStringSchema.overwrite(
+  (value) => value.trim(),
+);
 const uniqueNonBlankStringsSchema = z
-  .array(nonBlankStringSchema)
+  .array(normalizedNonBlankStringSchema)
   .refine(
     (values) => new Set(values).size === values.length,
-    "Values must be unique.",
+    "Values must be unique after trimming.",
   );
 const nonEmptyUniqueStringsSchema = uniqueNonBlankStringsSchema.min(1);
 const sourceAuthenticationStateSchema = z.enum(SOURCE_AUTHENTICATION_STATES);

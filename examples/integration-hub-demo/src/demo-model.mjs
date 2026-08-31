@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  canonicalSourceMappingHash,
   evaluatePurposeLimitedAccess,
   executeSourceMapping,
   reconcileCanonicalRecords,
@@ -315,6 +316,7 @@ export async function buildDemoModel() {
       sourceRecord;
     const result = executeSourceMapping({
       mapping,
+      expectedMappingHash: canonicalSourceMappingHash(mapping),
       envelope: {
         ...metadata,
         payload: structuredClone(payload),

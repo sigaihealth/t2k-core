@@ -79,6 +79,7 @@ record plus a deterministic receipt.
 
 ```ts
 import {
+  canonicalSourceMappingHash,
   executeSourceMapping,
   parseOntologyPackManifest,
 } from "@t2kai/core";
@@ -101,6 +102,9 @@ if (!parsedPack || compilation?.status !== "valid") {
 const mapping = parsedPack.sourceMappings[0];
 if (!mapping?.fieldMappings?.length) {
   throw new Error("The source mapping is descriptive, not executable");
+}
+if (canonicalSourceMappingHash(mapping) !== registrySelection.mappingHash) {
+  throw new Error("The registry-selected mapping revision changed");
 }
 const result = executeSourceMapping({
   mapping,
@@ -146,7 +150,10 @@ Executable mappings can opt into source binding with `sourceSystem`,
 `acceptedAuthorityRefs`. Legacy mappings that omit these selectors retain
 their prior behavior. New integrations should declare them and pin the
 independently resolved revision with `expectedMappingHash`; every selector is
-itself covered by the computed mapping hash.
+itself covered by the computed mapping hash. Use
+`canonicalSourceMappingHash` to compute and persist that digest outside the
+executor. Authority references are trimmed, ordered canonically for hashing,
+and rejected when two entries become equal after trimming.
 
 Treat an envelope as immutable once it has been mapped. A later observation is
 a new envelope: keep the prior file or event, use a new locator, source-record

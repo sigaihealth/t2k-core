@@ -18,7 +18,18 @@ describe("integration hub demo model", () => {
     const model = await buildDemoModel();
 
     assert.equal(model.ontology.valid, true);
+    assert.equal(model.ontology.version, "1.0.1");
     assert.equal(model.agencies.length, 3);
+    assert.deepEqual(
+      Object.fromEntries(
+        model.agencies.map(({ agency, mapping }) => [agency.id, mapping.version])
+      ),
+      {
+        "county-services": "2.1.1",
+        "state-benefits": "1.0.1",
+        "state-labor": "1.3.1",
+      }
+    );
     assert.equal(new Set(model.agencies.map((item) => item.sourceSystem)).size, 3);
     assert.ok(
       model.agencies.every(({ receipt }) => receipt.status === "mapped")

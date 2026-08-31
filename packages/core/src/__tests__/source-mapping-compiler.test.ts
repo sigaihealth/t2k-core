@@ -129,6 +129,42 @@ describe("source-mapping compiler integrity", () => {
     expect(compile(manifest).status).toBe("valid");
   });
 
+  it("rejects authority references that collide after trimming", () => {
+    const manifest = baseManifest();
+    const mapping = manifest.sourceMappings[0] as (typeof manifest.sourceMappings)[number] &
+      { acceptedAuthorityRefs: string[] };
+    mapping.acceptedAuthorityRefs = [
+      "authority:synthetic-person-api",
+      " authority:synthetic-person-api ",
+    ];
+
+    expect(validateOntologyPackManifest(manifest)).toEqual({
+      valid: false,
+      errors: [
+        expect.objectContaining({
+          path: "/sourceMappings/0/acceptedAuthorityRefs/1",
+          keyword: "uniqueItems",
+        }),
+      ],
+    });
+    expect(parseOntologyPackManifest(manifest)).toBeNull();
+
+    const legacyCompilerResult = compileOntologyPackSet({
+      manifests: [manifest],
+      roots: [{ ontologyId: "benefits", version: "1.0.0" }],
+      legacyManifestIndexes: [0],
+    });
+    expect(legacyCompilerResult.status).toBe("invalid");
+    expect(legacyCompilerResult.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "duplicate_source_mapping_authority_ref",
+          level: "error",
+        }),
+      ])
+    );
+  });
+
   it("rejects dangling mapping and event objects", () => {
     const manifest = baseManifest();
     manifest.sourceMappings[0].object = "missing_person";

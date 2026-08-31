@@ -164,6 +164,39 @@ describe("pack compiler", () => {
     );
   });
 
+  it("fails closed when JavaScript callers bypass the compilation-mode union", () => {
+    const accepted = manifest({
+      ontologyId: "core",
+      ontologyVersion: "1.0.0",
+    });
+    const draft = {
+      ...manifest({ ontologyId: "core", ontologyVersion: "2.0.0" }),
+      status: "draft",
+    };
+    const result = compileOntologyPackSet({
+      manifests: [accepted, draft],
+      roots: [{ ontologyId: "core", version: "*" }],
+      mode: "preview",
+    } as unknown as Parameters<typeof compileOntologyPackSet>[0]);
+
+    expect(result).toMatchObject({
+      status: "invalid",
+      mode: "deployment",
+      packs: [expect.objectContaining({ ontologyVersion: "1.0.0" })],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_compilation_mode",
+          level: "error",
+        }),
+      ]),
+    });
+    expect(result.packs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ontologyVersion: "2.0.0" }),
+      ])
+    );
+  });
+
   it("resolves dependency order and produces deterministic hashes", () => {
     const core = manifest({ ontologyId: "core", ontologyVersion: "1.2.0" });
     const smb = manifest({

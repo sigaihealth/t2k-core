@@ -331,6 +331,40 @@ describe("T2K MCP semantic mode", () => {
         message: expect.stringContaining("nesting limit"),
       });
 
+      const oversizedPropertyKey = "k".repeat(
+        T2K_MCP_PUBLIC_INPUT_LIMITS.maxPropertyKeyLength + 1,
+      );
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_policy",
+          arguments: {
+            specification,
+            state: { [oversizedPropertyKey]: true },
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("property key"),
+      });
+
+      const textChunk = "x".repeat(
+        Math.floor(
+          T2K_MCP_PUBLIC_INPUT_LIMITS.maxTotalTextCharacters / 2,
+        ),
+      );
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_policy",
+          arguments: {
+            specification,
+            state: { first: textChunk, second: textChunk },
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("total character limit"),
+      });
+
       const capabilities = await client.readResource({
         uri: "t2k://capabilities",
       });
@@ -414,6 +448,38 @@ describe("T2K MCP semantic mode", () => {
       expect(structuredResult(mapped)).toMatchObject({
         receipt: { status: "mapped", mappingId: input.mapping.id },
       });
+
+      const normalizedAuthorityInput = governedSourceInput(
+        "authority-normalized-001",
+        "authority:manifest",
+        "Ada Lovelace",
+      );
+      Object.assign(normalizedAuthorityInput.mapping, {
+        acceptedAuthorityRefs: [" authority:manifest "],
+      });
+      const normalizedAuthority = await client.callTool({
+        name: "map_governed_source_record",
+        arguments: normalizedAuthorityInput,
+      });
+      expect(normalizedAuthority.isError).not.toBe(true);
+      expect(structuredResult(normalizedAuthority)).toMatchObject({
+        receipt: { status: "mapped" },
+      });
+
+      const duplicateAuthorityInput = structuredClone(
+        normalizedAuthorityInput,
+      );
+      Object.assign(duplicateAuthorityInput.mapping, {
+        acceptedAuthorityRefs: ["authority:manifest", " authority:manifest "],
+      });
+      const duplicateAuthority = await client.callTool({
+        name: "map_governed_source_record",
+        arguments: duplicateAuthorityInput,
+      });
+      expect(duplicateAuthority.isError).toBe(true);
+      expect(toolErrorText(duplicateAuthority)).toContain(
+        "unique after trimming",
+      );
 
       const descriptive = await client.callTool({
         name: "map_governed_source_record",

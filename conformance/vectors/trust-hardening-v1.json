@@ -200,8 +200,16 @@
     "selectors": {
       "sourceSystem": "synthetic-conformance-api",
       "sourceLocatorMatch": "prefix",
-      "acceptedAuthorityRefs": ["synthetic_person_api"]
+      "acceptedAuthorityRefs": [
+        "synthetic_person_api",
+        "synthetic_backup_api"
+      ]
     },
+    "expectedCanonicalMappingHash": "3049d2488f0e85e4236d1b84d0c3dc349384c638004371b3057ae16fa1e71b56",
+    "trimEquivalentDuplicateAuthorityRefs": [
+      "synthetic_person_api",
+      " synthetic_person_api "
+    ],
     "cases": [
       { "name": "matching-source", "overrides": {}, "expectedStatus": "mapped" },
       {

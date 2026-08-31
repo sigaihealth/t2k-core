@@ -17,14 +17,21 @@ rules in the versioned specification.
   evidence enforcement with `evidenceMode: "strict"`.
 - Executable mappings can bind source system, locator, accepted authorities,
   and a caller-pinned mapping hash. MCP calls now have documented depth, node,
-  collection, string, and batch limits.
+  collection, property-key, per-string, aggregate-text, and batch limits.
+- Authority-reference sets reject duplicates after trimming in validation,
+  compilation, MCP normalization, and direct runtime execution. Invalid
+  JavaScript compiler modes now fail closed as deployment.
 - MCP publication now uses the same annotated, protected-main,
   GitHub-signature-bound release gate as Core.
 
 ### Changed
 
-- Twelve language-neutral JSON vectors cover deployment resolution, replay
+- Thirteen language-neutral JSON vectors cover deployment resolution, replay
   identity, reward evidence, and source-binding behavior.
+- Core exports `canonicalSourceMappingHash` so registries and callers can pin
+  the exact normalized mapping revision used at execution.
+- The three-source integration demo advances its ontology to 1.0.1 and its
+  three mapping revisions to account for the new source selectors.
 - `create-t2k@0.4.4` preserves both existing profiles while updating their
   exact generated-project Core pin to `@t2kai/core@0.4.4`.
 

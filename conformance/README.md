@@ -11,7 +11,8 @@ positive and negative fixtures. It verifies:
 - positive governed source execution and fail-closed legacy/duplicate runtime
   behavior;
 - language-neutral JSON vectors for deployment-only pack selection, replay
-  identity, deterministic reward evidence, and source-binding behavior;
+  identity, deterministic reward evidence, normalized authority sets,
+  canonical mapping hashes, and source-binding behavior;
 - byte identity between the repository schema and package source artifact.
 
 ```bash
