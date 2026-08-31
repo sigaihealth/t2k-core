@@ -1,0 +1,235 @@
+{
+  "vectorType": "t2k.trust-hardening-conformance",
+  "vectorVersion": "1.0",
+  "deploymentCompilation": [
+    {
+      "name": "accepted-version-wins-over-newer-draft",
+      "ontologyId": "conformance.deployment-selection",
+      "versions": [
+        { "ontologyVersion": "1.0.0", "status": "accepted" },
+        { "ontologyVersion": "2.0.0", "status": "draft" }
+      ],
+      "rootVersion": "*",
+      "expectedStatus": "valid",
+      "expectedOntologyVersion": "1.0.0"
+    },
+    {
+      "name": "draft-only-deployment-fails-closed",
+      "ontologyId": "conformance.deployment-draft-only",
+      "versions": [
+        { "ontologyVersion": "2.0.0", "status": "draft" }
+      ],
+      "rootVersion": "^2.0.0",
+      "expectedStatus": "invalid",
+      "expectedDiagnostic": "unaccepted_root_pack"
+    }
+  ],
+  "replaySpecification": {
+    "referencePolicy": {
+      "rules": [],
+      "defaultAction": "hold",
+      "evaluation": { "minimumEpisodes": 1 }
+    }
+  },
+  "replayEpisodeIdentity": [
+    {
+      "name": "blank-episode-id",
+      "episodes": [
+        {
+          "episodeId": " ",
+          "state": {},
+          "loggedAction": "hold",
+          "scalarReward": 1,
+          "learningMode": "supervised_feedback",
+          "behaviorProbability": null,
+          "guardrailViolation": false
+        }
+      ],
+      "expectedErrorContains": "nonblank episode ID"
+    },
+    {
+      "name": "duplicate-episode-id",
+      "episodes": [
+        {
+          "episodeId": "episode-1",
+          "state": {},
+          "loggedAction": "hold",
+          "scalarReward": 1,
+          "learningMode": "supervised_feedback",
+          "behaviorProbability": null,
+          "guardrailViolation": false
+        },
+        {
+          "episodeId": "episode-1",
+          "state": {},
+          "loggedAction": "hold",
+          "scalarReward": 1,
+          "learningMode": "supervised_feedback",
+          "behaviorProbability": null,
+          "guardrailViolation": false
+        }
+      ],
+      "expectedErrorContains": "is duplicated"
+    },
+    {
+      "name": "conflicting-episode-id",
+      "episodes": [
+        {
+          "episodeId": "episode-1",
+          "state": {},
+          "loggedAction": "hold",
+          "scalarReward": 1,
+          "learningMode": "supervised_feedback",
+          "behaviorProbability": null,
+          "guardrailViolation": false
+        },
+        {
+          "episodeId": "episode-1",
+          "state": {},
+          "loggedAction": "hold",
+          "scalarReward": -1,
+          "learningMode": "supervised_feedback",
+          "behaviorProbability": null,
+          "guardrailViolation": false
+        }
+      ],
+      "expectedErrorContains": "conflicting episode evidence"
+    }
+  ],
+  "rewardEvaluation": [
+    {
+      "name": "conflicting-latest-tie",
+      "rewardSpec": [
+        {
+          "measureRef": "conformance.rate",
+          "label": "Conformance rate",
+          "direction": "maximize",
+          "weight": 1,
+          "required": true,
+          "guardrail": false,
+          "observationWindow": "7d",
+          "aggregation": "latest",
+          "baselineMethod": "explicit",
+          "attributionMethod": "direct"
+        }
+      ],
+      "observations": [
+        {
+          "measureRef": "conformance.rate",
+          "observedValue": 0.5,
+          "baselineValue": 0.4,
+          "observationWindow": "7d",
+          "observedAt": "2026-08-30T00:00:00.000Z"
+        },
+        {
+          "measureRef": "conformance.rate",
+          "observedValue": 0.8,
+          "baselineValue": 0.4,
+          "observationWindow": "7d",
+          "observedAt": "2026-08-30T00:00:00.000Z"
+        }
+      ],
+      "expectedErrorContains": "conflicting latest observations"
+    },
+    {
+      "name": "mixed-numeric-aggregation",
+      "rewardSpec": [
+        {
+          "measureRef": "conformance.rate",
+          "label": "Conformance rate",
+          "direction": "target",
+          "target": 1,
+          "weight": 1,
+          "required": true,
+          "guardrail": false,
+          "observationWindow": "7d",
+          "aggregation": "average",
+          "baselineMethod": "none",
+          "attributionMethod": "direct"
+        }
+      ],
+      "observations": [
+        {
+          "measureRef": "conformance.rate",
+          "observedValue": 1,
+          "baselineValue": null,
+          "observationWindow": "7d",
+          "observedAt": "2026-08-29T00:00:00.000Z"
+        },
+        {
+          "measureRef": "conformance.rate",
+          "observedValue": "unknown",
+          "baselineValue": null,
+          "observationWindow": "7d",
+          "observedAt": "2026-08-30T00:00:00.000Z"
+        }
+      ],
+      "expectedErrorContains": "only finite numeric observations"
+    },
+    {
+      "name": "strict-human-review-evidence",
+      "evidenceMode": "strict",
+      "rewardSpec": [
+        {
+          "measureRef": "conformance.rate",
+          "label": "Conformance rate",
+          "direction": "maximize",
+          "weight": 1,
+          "required": true,
+          "guardrail": false,
+          "observationWindow": "7d",
+          "aggregation": "latest",
+          "baselineMethod": "explicit",
+          "attributionMethod": "human_review"
+        }
+      ],
+      "observations": [
+        {
+          "measureRef": "conformance.rate",
+          "observedValue": 0.8,
+          "baselineValue": 0.4,
+          "observationWindow": "7d",
+          "observedAt": "2026-08-30T00:00:00.000Z"
+        }
+      ],
+      "expectedLifecycleStatus": "incomplete",
+      "expectedExplanationContains": "human_review attribution"
+    }
+  ],
+  "sourceBinding": {
+    "selectors": {
+      "sourceSystem": "synthetic-conformance-api",
+      "sourceLocatorMatch": "prefix",
+      "acceptedAuthorityRefs": [
+        "synthetic_person_api",
+        "synthetic_backup_api"
+      ]
+    },
+    "expectedCanonicalMappingHash": "3049d2488f0e85e4236d1b84d0c3dc349384c638004371b3057ae16fa1e71b56",
+    "trimEquivalentDuplicateAuthorityRefs": [
+      "synthetic_person_api",
+      " synthetic_person_api "
+    ],
+    "cases": [
+      { "name": "matching-source", "overrides": {}, "expectedStatus": "mapped" },
+      {
+        "name": "wrong-source-system",
+        "overrides": { "sourceSystem": "synthetic-other-api" },
+        "expectedStatus": "rejected",
+        "expectedIssue": "source_system_mismatch"
+      },
+      {
+        "name": "locator-prefix-boundary",
+        "overrides": { "sourceLocator": "synthetic://conformance/person-api-impersonator/RECORD-001" },
+        "expectedStatus": "rejected",
+        "expectedIssue": "source_locator_mismatch"
+      },
+      {
+        "name": "wrong-authority",
+        "overrides": { "authorityRef": "synthetic_other_api" },
+        "expectedStatus": "rejected",
+        "expectedIssue": "source_authority_mismatch"
+      }
+    ]
+  }
+}

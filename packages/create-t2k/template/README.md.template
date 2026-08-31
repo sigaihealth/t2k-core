@@ -60,7 +60,7 @@ to an MCP host with the safe database-free mode:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.0"]
+      "args": ["-y", "@t2kai/mcp@0.3.1"]
     }
   }
 }

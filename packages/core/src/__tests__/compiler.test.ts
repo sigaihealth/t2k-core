@@ -105,6 +105,98 @@ describe("ontology manifest", () => {
 });
 
 describe("pack compiler", () => {
+  it("allows drafts for authoring but resolves accepted packs only for deployment", () => {
+    const accepted = manifest({ ontologyId: "core", ontologyVersion: "1.0.0" });
+    const draft = {
+      ...manifest({ ontologyId: "core", ontologyVersion: "2.0.0" }),
+      status: "draft",
+    };
+
+    const authoring = compileOntologyPackSet({
+      manifests: [accepted, draft],
+      roots: [{ ontologyId: "core", version: "*" }],
+      mode: "authoring",
+    });
+    const deployment = compileOntologyPackSet({
+      manifests: [accepted, draft],
+      roots: [{ ontologyId: "core", version: "*" }],
+      mode: "deployment",
+    });
+    const backwardCompatibleDefault = compileOntologyPackSet({
+      manifests: [accepted, draft],
+      roots: [{ ontologyId: "core", version: "*" }],
+    });
+
+    expect(authoring).toMatchObject({
+      status: "valid",
+      mode: "authoring",
+      packs: [expect.objectContaining({ ontologyVersion: "2.0.0" })],
+    });
+    expect(deployment).toMatchObject({
+      status: "valid",
+      mode: "deployment",
+      packs: [expect.objectContaining({ ontologyVersion: "1.0.0" })],
+    });
+    expect(authoring.resolutionHash).not.toBe(deployment.resolutionHash);
+    expect(backwardCompatibleDefault.resolutionHash).toBe(
+      authoring.resolutionHash
+    );
+  });
+
+  it("fails deployment when only an unaccepted compatible pack exists", () => {
+    const result = compileOntologyPackSet({
+      manifests: [
+        {
+          ...manifest({ ontologyId: "core", ontologyVersion: "2.0.0" }),
+          status: "draft",
+        },
+      ],
+      roots: [{ ontologyId: "core", version: "^2.0.0" }],
+      mode: "deployment",
+    });
+
+    expect(result.status).toBe("invalid");
+    expect(result.packs).toEqual([]);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "unaccepted_root_pack", level: "error" }),
+      ])
+    );
+  });
+
+  it("fails closed when JavaScript callers bypass the compilation-mode union", () => {
+    const accepted = manifest({
+      ontologyId: "core",
+      ontologyVersion: "1.0.0",
+    });
+    const draft = {
+      ...manifest({ ontologyId: "core", ontologyVersion: "2.0.0" }),
+      status: "draft",
+    };
+    const result = compileOntologyPackSet({
+      manifests: [accepted, draft],
+      roots: [{ ontologyId: "core", version: "*" }],
+      mode: "preview",
+    } as unknown as Parameters<typeof compileOntologyPackSet>[0]);
+
+    expect(result).toMatchObject({
+      status: "invalid",
+      mode: "deployment",
+      packs: [expect.objectContaining({ ontologyVersion: "1.0.0" })],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_compilation_mode",
+          level: "error",
+        }),
+      ]),
+    });
+    expect(result.packs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ontologyVersion: "2.0.0" }),
+      ])
+    );
+  });
+
   it("resolves dependency order and produces deterministic hashes", () => {
     const core = manifest({ ontologyId: "core", ontologyVersion: "1.2.0" });
     const smb = manifest({

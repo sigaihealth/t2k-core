@@ -13,7 +13,12 @@ const workspaceRoot = path.resolve(packageRoot, "../..");
 const smokeRoot = await mkdtemp(path.join(tmpdir(), "t2k-core-smoke-"));
 
 const smokeProgram = String.raw`
-import { T2kClient, parseOntologyPackManifest, reconcileCanonicalRecords } from "@t2kai/core";
+import {
+  T2kClient,
+  canonicalSourceMappingHash,
+  parseOntologyPackManifest,
+  reconcileCanonicalRecords,
+} from "@t2kai/core";
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import {
   PostgresReferenceLifecycle,
@@ -69,6 +74,9 @@ const schemaUrl = import.meta.resolve(
 );
 const schema = JSON.parse(await readFile(new URL(schemaUrl), "utf8"));
 const client = new T2kClient({ baseUrl: "https://studio.t2k.ai/" });
+if (typeof canonicalSourceMappingHash !== "function") {
+  throw new Error("The public canonical source-mapping hash helper is missing.");
+}
 const reconciliationHash = computeReferenceReconciliationProposalHash({
   proposalKey: "smoke:proposal-1",
   objectType: "business",

@@ -21,7 +21,7 @@ integration results persistent.
 ## Install and Check
 
 ```bash
-npx -y @t2kai/mcp@0.3.0 --help
+npx -y @t2kai/mcp@0.3.1 --help
 ```
 
 Add the server to the host's MCP server map:
@@ -31,7 +31,7 @@ Add the server to the host's MCP server map:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.0"]
+      "args": ["-y", "@t2kai/mcp@0.3.1"]
     }
   }
 }
@@ -45,10 +45,14 @@ operations.
 
 1. Call `validate_ontology_pack` with a manifest and fix every schema error.
 2. Call `compile_ontology_pack_set` with all local manifests and explicit root
-   requirements. The compiler never fetches undeclared dependencies.
+   requirements. Use `mode: "deployment"` for any release-bound resolution;
+   only accepted packs are eligible. The compiler never fetches undeclared
+   dependencies.
 3. Call `evaluate_reference_policy` with a policy specification and current
    state to compute the proposed action.
-4. Call `evaluate_reference_reward` only after observations are available.
+4. Call `evaluate_reference_reward` only after observations are available. New
+   integrations should use `evidenceMode: "strict"` and provide the
+   method-specific evidence references.
 5. Call `evaluate_reference_replay` with disjoint held-out episodes before a
    human considers promotion.
 
@@ -62,8 +66,17 @@ pipeline. All four tools are read-only in every mode and do not fetch sources,
 use credentials, persist evidence, merge entities, accept truth, authenticate
 principals, or enforce disclosure.
 
+Access-policy selector strings remain exact across transport. MCP does not
+trim roles, purposes, relationships, data categories, or jurisdictions into a
+match that direct Core evaluation would deny.
+
 Tool results contain both human-readable JSON text and `structuredContent`, so
 hosts can display the result or pass it to another tool without scraping prose.
+Every tool call is bounded by the limits published in `t2k://capabilities`;
+the current public ceiling includes 8,192 characters per property key,
+1,000,000 per string value, and 2,000,000 total characters across property
+keys and string values. Oversized or excessively nested calls fail as invalid
+MCP parameters before semantic evaluation.
 
 See the [integration-hub tutorial](INTEGRATION_HUB_TUTORIAL.md) for the generated
 two-source profile, the three-source browser demo, and the human-plus-AI
@@ -103,7 +116,7 @@ Automatic migration is disabled by default:
 ```bash
 export T2K_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/t2k'
 export T2K_MCP_AUTO_MIGRATE=true
-npx -y @t2kai/mcp@0.3.0
+npx -y @t2kai/mcp@0.3.1
 ```
 
 For production-like use, run migration in a controlled deployment step and

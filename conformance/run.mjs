@@ -4,6 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  canonicalSourceMappingHash,
+  evaluateReferenceReplay,
+  evaluateReferenceReward,
   executeSourceMapping,
   parseOntologyPackManifest,
   validateOntologyPackManifest,
@@ -102,14 +105,13 @@ for (const file of compilerInvalidFiles) {
   );
 }
 
-const structuredManifest = parseOntologyPackManifest(
-  JSON.parse(
-    await fs.readFile(
-      path.join(root, "valid/source-mapping-structured.json"),
-      "utf8"
-    )
+const structuredManifestInput = JSON.parse(
+  await fs.readFile(
+    path.join(root, "valid/source-mapping-structured.json"),
+    "utf8"
   )
 );
+const structuredManifest = parseOntologyPackManifest(structuredManifestInput);
 assert.ok(structuredManifest, "structured source fixture must parse");
 const structuredPayload = {
   record_id: "RECORD-001",
@@ -140,6 +142,172 @@ assert.equal(structuredResult.receipt.status, "mapped");
 assert.deepEqual(structuredResult.canonicalRecord.identity, {
   person_id: "PERSON-001",
 });
+
+const trustVectors = JSON.parse(
+  await fs.readFile(
+    path.join(root, "vectors/trust-hardening-v1.json"),
+    "utf8"
+  )
+);
+assert.equal(
+  trustVectors.vectorType,
+  "t2k.trust-hardening-conformance",
+  "trust-hardening vectors must declare their contract"
+);
+const minimalTemplate = JSON.parse(
+  await fs.readFile(path.join(root, "valid/minimal.json"), "utf8")
+);
+for (const vector of trustVectors.deploymentCompilation) {
+  const manifests = vector.versions.map((version) => ({
+    ...structuredClone(minimalTemplate),
+    ontologyId: vector.ontologyId,
+    ontologyVersion: version.ontologyVersion,
+    label: `${vector.name} ${version.ontologyVersion}`,
+    status: version.status,
+  }));
+  const result = compileOntologyPackSet({
+    manifests,
+    roots: [{ ontologyId: vector.ontologyId, version: vector.rootVersion }],
+    mode: "deployment",
+  });
+  assert.equal(result.status, vector.expectedStatus, vector.name);
+  if (vector.expectedOntologyVersion) {
+    assert.equal(result.packs[0]?.ontologyVersion, vector.expectedOntologyVersion);
+  }
+  if (vector.expectedDiagnostic) {
+    assert.ok(
+      result.diagnostics.some((item) => item.code === vector.expectedDiagnostic),
+      `${vector.name} must report ${vector.expectedDiagnostic}`
+    );
+  }
+}
+
+for (const vector of trustVectors.replayEpisodeIdentity) {
+  assert.throws(
+    () =>
+      evaluateReferenceReplay({
+        candidateSpecification: trustVectors.replaySpecification,
+        baselineSpecification: trustVectors.replaySpecification,
+        episodes: vector.episodes,
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes(vector.expectedErrorContains),
+    vector.name
+  );
+}
+
+for (const vector of trustVectors.rewardEvaluation) {
+  if (vector.expectedErrorContains) {
+    assert.throws(
+      () =>
+        evaluateReferenceReward({
+          rewardSpec: vector.rewardSpec,
+          observations: vector.observations,
+          evidenceMode: vector.evidenceMode,
+        }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes(vector.expectedErrorContains),
+      vector.name
+    );
+    continue;
+  }
+  const result = evaluateReferenceReward({
+    rewardSpec: vector.rewardSpec,
+    observations: vector.observations,
+    evidenceMode: vector.evidenceMode,
+  });
+  assert.equal(result.lifecycleStatus, vector.expectedLifecycleStatus, vector.name);
+  assert.ok(
+    result.dimensions[0]?.explanation.includes(
+      vector.expectedExplanationContains
+    ),
+    vector.name
+  );
+}
+
+const boundStructuredMapping = {
+  ...structuredClone(structuredManifest.sourceMappings[0]),
+  ...trustVectors.sourceBinding.selectors,
+};
+assert.equal(
+  canonicalSourceMappingHash(boundStructuredMapping),
+  trustVectors.sourceBinding.expectedCanonicalMappingHash,
+  "canonical source-mapping hash must match the portable vector"
+);
+assert.equal(
+  canonicalSourceMappingHash({
+    ...boundStructuredMapping,
+    acceptedAuthorityRefs: [
+      ...boundStructuredMapping.acceptedAuthorityRefs,
+    ].reverse(),
+  }),
+  canonicalSourceMappingHash(boundStructuredMapping),
+  "accepted authority ordering must not change the canonical mapping hash"
+);
+for (const vector of trustVectors.sourceBinding.cases) {
+  const result = executeSourceMapping({
+    mapping: boundStructuredMapping,
+    envelope: { ...structuredEnvelope, ...vector.overrides },
+  });
+  assert.equal(result.receipt.status, vector.expectedStatus, vector.name);
+  if (vector.expectedIssue) {
+    assert.ok(
+      result.receipt.issues.some((item) => item.code === vector.expectedIssue),
+      `${vector.name} must report ${vector.expectedIssue}`
+    );
+  }
+}
+
+const duplicateAuthorityManifest = structuredClone(structuredManifestInput);
+duplicateAuthorityManifest.sourceMappings[0].acceptedAuthorityRefs =
+  trustVectors.sourceBinding.trimEquivalentDuplicateAuthorityRefs;
+assert.equal(
+  validateOntologyPackManifest(duplicateAuthorityManifest).valid,
+  false,
+  "trim-equivalent authority references must fail manifest validation"
+);
+const duplicateAuthorityCompilation = compileOntologyPackSet({
+  manifests: [duplicateAuthorityManifest],
+  roots: [
+    {
+      ontologyId: duplicateAuthorityManifest.ontologyId,
+      version: duplicateAuthorityManifest.ontologyVersion,
+    },
+  ],
+  legacyManifestIndexes: [0],
+});
+assert.equal(
+  duplicateAuthorityCompilation.status,
+  "invalid",
+  "trim-equivalent authority references must fail compilation"
+);
+assert.ok(
+  duplicateAuthorityCompilation.diagnostics.some(
+    (item) => item.code === "duplicate_source_mapping_authority_ref"
+  ),
+  "compiler must report normalized duplicate authority references"
+);
+const duplicateAuthorityRuntime = executeSourceMapping({
+  mapping: {
+    ...structuredClone(structuredManifest.sourceMappings[0]),
+    acceptedAuthorityRefs:
+      trustVectors.sourceBinding.trimEquivalentDuplicateAuthorityRefs,
+  },
+  envelope: structuredEnvelope,
+});
+assert.equal(
+  duplicateAuthorityRuntime.receipt.status,
+  "rejected",
+  "runtime must reject normalized duplicate authority references"
+);
+assert.ok(
+  duplicateAuthorityRuntime.receipt.issues.some(
+    (item) => item.code === "invalid_source_binding"
+  ),
+  "runtime must report invalid source binding for normalized duplicates"
+);
 
 const legacyManifest = parseOntologyPackManifest(
   JSON.parse(
@@ -201,5 +369,5 @@ const packageSchema = await fs.readFile(
 assert.equal(packageSchema, canonicalSchema, "package and canonical schemas must match byte-for-byte");
 
 console.log(
-  `T2K conformance passed: ${validFiles.length} valid, ${invalidFiles.length} schema-invalid, ${compilerInvalidFiles.length} compiler-invalid, deterministic hashes and governed source execution verified.`
+  `T2K conformance passed: ${validFiles.length} valid, ${invalidFiles.length} schema-invalid, ${compilerInvalidFiles.length} compiler-invalid, ${trustVectors.deploymentCompilation.length + trustVectors.replayEpisodeIdentity.length + trustVectors.rewardEvaluation.length + trustVectors.sourceBinding.cases.length + 1} language-neutral trust vectors, deterministic hashes and governed source execution verified.`
 );

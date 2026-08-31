@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { compareCanonicalStrings, semanticHash } from "../compiler.js";
 import type { OntologyPackSourceMapping } from "../manifest.js";
 import {
+  canonicalSourceMappingHash,
   type CanonicalAuthorityPolicy,
   executeSourceMapping,
   type ExecuteSourceMappingResult,
@@ -84,18 +85,6 @@ const sourcePayload = {
   caseStatus: "alleged",
   eligibilityDate: "2026-08-29T00:00:00-07:00",
 };
-
-function canonicalMappingHash(mapping: OntologyPackSourceMapping) {
-  return semanticHash({
-    ...mapping,
-    fieldMappings: [...mapping.fieldMappings].sort(
-      (left, right) =>
-        compareCanonicalStrings(left.targetProperty, right.targetProperty) ||
-        compareCanonicalStrings(left.sourcePath, right.sourcePath)
-    ),
-    targetIdentity: [...mapping.targetIdentity].sort(compareCanonicalStrings),
-  });
-}
 
 function envelope(
   payload: FederatedSourceEnvelope["payload"] = sourcePayload,
@@ -337,7 +326,7 @@ describe("source integration", () => {
     );
     expect(first.receipt).toMatchObject({
       status: "mapped",
-      mappingHash: canonicalMappingHash(sourceMapping),
+      mappingHash: canonicalSourceMappingHash(sourceMapping),
       sourcePayloadHash: semanticHash(sourcePayload),
       lateArrival: false,
       duplicate: false,
@@ -373,7 +362,7 @@ describe("source integration", () => {
       sourceValueHash: semanticHash(" ab-123 "),
       sourcePayloadHash: semanticHash(sourcePayload),
       mappingId: sourceMapping.id,
-      mappingHash: canonicalMappingHash(sourceMapping),
+      mappingHash: canonicalSourceMappingHash(sourceMapping),
       eventTime: "2026-08-29T10:00:00-07:00",
       observedTime: "2026-08-29T10:00:05-07:00",
       authenticationState: "authenticated",
@@ -386,6 +375,101 @@ describe("source integration", () => {
 
     const { receiptHash, ...receiptWithoutHash } = first.receipt;
     expect(receiptHash).toBe(semanticHash(receiptWithoutHash));
+  });
+
+  it("binds executable mappings to source identity, authority, and a pinned hash", () => {
+    const boundMapping: OntologyPackSourceMapping = {
+      ...structuredClone(sourceMapping),
+      sourceLocator: "claimant-api/messages",
+      sourceSystem: "claimant-api",
+      sourceLocatorMatch: "prefix",
+      acceptedAuthorityRefs: ["authority:claimant", "authority:backup"],
+    };
+    const expectedMappingHash = canonicalSourceMappingHash(boundMapping);
+    expect(
+      canonicalSourceMappingHash({
+        ...boundMapping,
+        acceptedAuthorityRefs: [
+          " authority:backup ",
+          "authority:claimant",
+        ],
+      })
+    ).toBe(expectedMappingHash);
+    const accepted = executeSourceMapping({
+      mapping: boundMapping,
+      envelope: envelope(),
+      expectedMappingHash,
+    });
+
+    expect(accepted.receipt).toMatchObject({
+      status: "mapped",
+      mappingHash: expectedMappingHash,
+      issues: [],
+    });
+
+    const mismatches = [
+      {
+        envelope: envelope(undefined, { sourceSystem: "other-api" }),
+        expectedMappingHash,
+        code: "source_system_mismatch",
+      },
+      {
+        envelope: envelope(undefined, {
+          sourceLocator: "synthetic://claimant-api-impersonator/messages/1",
+        }),
+        expectedMappingHash,
+        code: "source_locator_mismatch",
+      },
+      {
+        envelope: envelope(undefined, { authorityRef: "authority:other" }),
+        expectedMappingHash,
+        code: "source_authority_mismatch",
+      },
+      {
+        envelope: envelope(),
+        expectedMappingHash: "0".repeat(64),
+        code: "mapping_hash_mismatch",
+      },
+    ];
+    for (const mismatch of mismatches) {
+      const result = executeSourceMapping({
+        mapping: boundMapping,
+        envelope: mismatch.envelope,
+        expectedMappingHash: mismatch.expectedMappingHash,
+      });
+      expect(result.receipt.status).toBe("rejected");
+      expect(result.receipt.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: mismatch.code })])
+      );
+    }
+  });
+
+  it("fails closed on malformed runtime source selectors", () => {
+    for (const malformed of [
+      { acceptedAuthorityRefs: "authority:claimant" },
+      {
+        acceptedAuthorityRefs: [
+          "authority:claimant",
+          " authority:claimant ",
+        ],
+      },
+      { sourceLocatorMatch: "prefix", sourceLocator: 42 },
+      { sourceSystem: " " },
+    ]) {
+      const result = executeSourceMapping({
+        mapping: {
+          ...structuredClone(sourceMapping),
+          ...malformed,
+        } as unknown as OntologyPackSourceMapping,
+        envelope: envelope(),
+      });
+      expect(result.receipt.status).toBe("rejected");
+      expect(result.receipt.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "invalid_source_binding" }),
+        ])
+      );
+    }
   });
 
   it("quarantines drift and late arrivals, then recognizes an idempotent replay", () => {

@@ -6,6 +6,57 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-30
+
+### Security
+
+- Ontology compilation now has an accepted-only `deployment` mode, while
+  replay rejects blank, duplicate, and conflicting episode identifiers.
+- Reward evaluation rejects conflicting latest-timestamp evidence and
+  mixed-type numeric aggregations. New callers can opt into method-specific
+  evidence enforcement with `evidenceMode: "strict"`.
+- Executable mappings can bind source system, locator, accepted authorities,
+  and a caller-pinned mapping hash. MCP calls now have documented depth, node,
+  collection, property-key, per-string, aggregate-text, and batch limits.
+- Authority-reference sets reject duplicates after trimming in validation,
+  compilation, MCP normalization, and direct runtime execution. Invalid
+  JavaScript compiler modes now fail closed as deployment.
+- MCP publication now uses the same annotated, protected-main,
+  GitHub-signature-bound release gate as Core.
+
+### Changed
+
+- Thirteen language-neutral JSON vectors cover deployment resolution, replay
+  identity, reward evidence, and source-binding behavior.
+- Core exports `canonicalSourceMappingHash` so registries and callers can pin
+  the exact normalized mapping revision used at execution.
+- The three-source integration demo advances its ontology to 1.0.1 and its
+  three mapping revisions to account for the new source selectors.
+- `create-t2k@0.4.4` preserves both existing profiles while updating their
+  exact generated-project Core pin to `@t2kai/core@0.4.4`.
+
+### Compatibility
+
+- `authoring` remains the compiler default and preserves the prior authoring
+  resolution hash. `legacy` remains the reward-evidence default; strict
+  method-specific evidence is opt-in for migration safety.
+- Source selectors are optional, so existing mappings retain their previous
+  routing behavior and hash shape until selectors are declared.
+- MCP trims only `acceptedAuthorityRefs`. Roles, purposes, relationships,
+  categories, jurisdictions, and other Core selector arrays retain exact
+  caller strings so transport cannot broaden an access decision.
+- There is no database migration. The 0.4.3 PostgreSQL compatibility and
+  legacy-reward quarantine remain unchanged.
+
+## [`@t2kai/mcp` 0.3.1] - 2026-08-30
+
+### Security
+
+- Exposes accepted-only compilation, strict reward evidence, source/hash
+  binding, and bounded public inputs from the patched Core runtime.
+- Requires `@t2kai/core@^0.4.4` so older Core versions cannot silently omit
+  the new trust controls.
+
 ## [0.4.3] - 2026-08-30
 
 ### Security

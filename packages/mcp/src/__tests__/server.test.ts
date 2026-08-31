@@ -3,10 +3,16 @@ import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import {
+  evaluatePurposeLimitedAccess,
+  type PurposeLimitedAccessPolicy,
+  type PurposeLimitedAccessRequest,
+} from "@t2kai/core";
 import { describe, expect, it } from "vitest";
 
 import {
   T2K_MCP_HUMAN_GOVERNANCE_OPERATIONS,
+  T2K_MCP_PUBLIC_INPUT_LIMITS,
   createT2kMcpRuntime,
   type T2kMcpRuntime,
 } from "../server.js";
@@ -148,6 +154,7 @@ interface AdvertisedJsonSchema {
   properties?: Record<string, unknown>;
   additionalProperties?: boolean;
   allOf?: AdvertisedJsonSchema[];
+  maxItems?: number;
 }
 
 function closedWorldObjectSchema(schema: AdvertisedJsonSchema | undefined) {
@@ -278,6 +285,103 @@ describe("T2K MCP semantic mode", () => {
     }
   });
 
+  it("advertises bounded batch contracts and rejects oversized or deeply nested calls", async () => {
+    const runtime = await createT2kMcpRuntime();
+    const client = await connect(runtime);
+
+    try {
+      const listed = await client.listTools();
+      const compileSchema = closedWorldObjectSchema(
+        listed.tools.find((tool) => tool.name === "compile_ontology_pack_set")
+          ?.inputSchema,
+      );
+      expect(compileSchema?.properties).toMatchObject({
+        manifests: expect.objectContaining({ maxItems: 128 }),
+        roots: expect.objectContaining({ maxItems: 64 }),
+      });
+
+      const oversizedEpisodes = Array.from(
+        { length: T2K_MCP_PUBLIC_INPUT_LIMITS.maxCollectionEntries + 1 },
+        () => null,
+      );
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_replay",
+          arguments: {
+            candidateSpecification: specification,
+            baselineSpecification: specification,
+            episodes: oversizedEpisodes,
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("entry limit"),
+      });
+
+      let deeplyNested: Record<string, unknown> = {};
+      for (
+        let depth = 0;
+        depth < T2K_MCP_PUBLIC_INPUT_LIMITS.maxDepth + 2;
+        depth += 1
+      ) {
+        deeplyNested = { nested: deeplyNested };
+      }
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_policy",
+          arguments: { specification, state: deeplyNested },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("nesting limit"),
+      });
+
+      const oversizedPropertyKey = "k".repeat(
+        T2K_MCP_PUBLIC_INPUT_LIMITS.maxPropertyKeyLength + 1,
+      );
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_policy",
+          arguments: {
+            specification,
+            state: { [oversizedPropertyKey]: true },
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("property key"),
+      });
+
+      const textChunk = "x".repeat(
+        Math.floor(
+          T2K_MCP_PUBLIC_INPUT_LIMITS.maxTotalTextCharacters / 2,
+        ),
+      );
+      await expect(
+        client.callTool({
+          name: "evaluate_reference_policy",
+          arguments: {
+            specification,
+            state: { first: textChunk, second: textChunk },
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCode.InvalidParams,
+        message: expect.stringContaining("total character limit"),
+      });
+
+      const capabilities = await client.readResource({
+        uri: "t2k://capabilities",
+      });
+      expect(JSON.parse(capabilities.contents[0]?.text ?? "{}")).toMatchObject({
+        inputLimits: T2K_MCP_PUBLIC_INPUT_LIMITS,
+      });
+    } finally {
+      await client.close();
+      await runtime.close();
+    }
+  });
+
   it("maps the executable source mapping directly from a validated public manifest", async () => {
     const runtime = await createT2kMcpRuntime();
     const client = await connect(runtime);
@@ -349,6 +453,38 @@ describe("T2K MCP semantic mode", () => {
       expect(structuredResult(mapped)).toMatchObject({
         receipt: { status: "mapped", mappingId: input.mapping.id },
       });
+
+      const normalizedAuthorityInput = governedSourceInput(
+        "authority-normalized-001",
+        "authority:manifest",
+        "Ada Lovelace",
+      );
+      Object.assign(normalizedAuthorityInput.mapping, {
+        acceptedAuthorityRefs: [" authority:manifest "],
+      });
+      const normalizedAuthority = await client.callTool({
+        name: "map_governed_source_record",
+        arguments: normalizedAuthorityInput,
+      });
+      expect(normalizedAuthority.isError).not.toBe(true);
+      expect(structuredResult(normalizedAuthority)).toMatchObject({
+        receipt: { status: "mapped" },
+      });
+
+      const duplicateAuthorityInput = structuredClone(
+        normalizedAuthorityInput,
+      );
+      Object.assign(duplicateAuthorityInput.mapping, {
+        acceptedAuthorityRefs: ["authority:manifest", " authority:manifest "],
+      });
+      const duplicateAuthority = await client.callTool({
+        name: "map_governed_source_record",
+        arguments: duplicateAuthorityInput,
+      });
+      expect(duplicateAuthority.isError).toBe(true);
+      expect(toolErrorText(duplicateAuthority)).toContain(
+        "unique after trimming",
+      );
 
       const descriptive = await client.callTool({
         name: "map_governed_source_record",
@@ -645,6 +781,79 @@ describe("T2K MCP semantic mode", () => {
         },
       });
       expect(invalidEntityProposal.isError).toBe(true);
+    } finally {
+      await client.close();
+      await runtime.close();
+    }
+  });
+
+  it("preserves exact access selectors with direct-Core parity", async () => {
+    const runtime = await createT2kMcpRuntime();
+    const client = await connect(runtime);
+    const basePolicy = purposeAccessPolicy as PurposeLimitedAccessPolicy;
+    const baseRequest = purposeAccessRequest as PurposeLimitedAccessRequest;
+    const cases: Array<{
+      label: string;
+      policy: PurposeLimitedAccessPolicy;
+      request: PurposeLimitedAccessRequest;
+    }> = [
+      {
+        label: "role",
+        policy: structuredClone(basePolicy),
+        request: {
+          ...structuredClone(baseRequest),
+          requestKey: "request-role-whitespace",
+          principalRoles: [" case_reviewer "],
+        },
+      },
+      {
+        label: "purpose",
+        policy: {
+          ...structuredClone(basePolicy),
+          rules: [
+            {
+              ...structuredClone(basePolicy.rules[0]!),
+              purposes: [" benefit_review "],
+            },
+          ],
+        },
+        request: {
+          ...structuredClone(baseRequest),
+          requestKey: "request-purpose-whitespace",
+        },
+      },
+      {
+        label: "data category",
+        policy: structuredClone(basePolicy),
+        request: {
+          ...structuredClone(baseRequest),
+          requestKey: "request-category-whitespace",
+          dataCategories: [" case_summary "],
+        },
+      },
+    ];
+
+    try {
+      for (const testCase of cases) {
+        const direct = evaluatePurposeLimitedAccess(
+          testCase.policy,
+          testCase.request,
+        );
+        expect(direct, testCase.label).toMatchObject({
+          decision: "deny",
+          reasonCode: "default_deny",
+        });
+
+        const response = await client.callTool({
+          name: "evaluate_purpose_limited_access",
+          arguments: {
+            policy: testCase.policy,
+            request: testCase.request,
+          },
+        });
+        expect(response.isError, testCase.label).not.toBe(true);
+        expect(structuredResult(response), testCase.label).toEqual(direct);
+      }
     } finally {
       await client.close();
       await runtime.close();

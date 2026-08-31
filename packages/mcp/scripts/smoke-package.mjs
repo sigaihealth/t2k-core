@@ -22,6 +22,20 @@ const transport = new StdioClientTransport({ command: binary, stderr: "pipe" });
 
 try {
   await client.connect(transport);
+  const capabilitiesResource = await client.readResource({
+    uri: "t2k://capabilities"
+  });
+  const capabilities = JSON.parse(
+    capabilitiesResource.contents[0]?.text ?? "{}"
+  );
+  if (
+    capabilities.inputLimits?.maxPropertyKeyLength !== 8192 ||
+    capabilities.inputLimits?.maxTotalTextCharacters !== 2000000
+  ) {
+    throw new Error(
+      "Packed MCP server did not publish the complete input budget."
+    );
+  }
   const listed = await client.listTools();
   const names = listed.tools.map((tool) => tool.name);
   if (
@@ -57,6 +71,32 @@ try {
   });
   if (result.structuredContent?.result !== "hold") {
     throw new Error("Packed MCP server did not execute the reference policy.");
+  }
+
+  let oversizedKeyRejected = false;
+  try {
+    await client.callTool({
+      name: "evaluate_reference_policy",
+      arguments: {
+        specification: {
+          referencePolicy: {
+            rules: [],
+            defaultAction: "hold",
+            evaluation: { minimumEpisodes: 1 }
+          }
+        },
+        state: {
+          ["k".repeat(
+            capabilities.inputLimits.maxPropertyKeyLength + 1
+          )]: true
+        }
+      }
+    });
+  } catch (error) {
+    oversizedKeyRejected = String(error).includes("property key");
+  }
+  if (!oversizedKeyRejected) {
+    throw new Error("Packed MCP server accepted an oversized property key.");
   }
 
   const mapping = {

@@ -142,6 +142,40 @@ describe("reference policy", () => {
     ).toThrow(ReferencePolicyError);
   });
 
+  it("rejects blank, duplicate, and conflicting replay episode IDs", () => {
+    const episode = {
+      episodeId: "episode-1",
+      state: { metrics: { margin: 0.18 } },
+      loggedAction: "raise_price",
+      scalarReward: 0.5,
+      learningMode: "supervised_feedback" as const,
+      behaviorProbability: null,
+      guardrailViolation: false,
+    };
+
+    expect(() =>
+      evaluateReferenceReplay({
+        candidateSpecification: candidate,
+        baselineSpecification: baseline,
+        episodes: [{ ...episode, episodeId: "  " }],
+      })
+    ).toThrow("nonblank episode ID");
+    expect(() =>
+      evaluateReferenceReplay({
+        candidateSpecification: candidate,
+        baselineSpecification: baseline,
+        episodes: [episode, { ...episode }],
+      })
+    ).toThrow("is duplicated");
+    expect(() =>
+      evaluateReferenceReplay({
+        candidateSpecification: candidate,
+        baselineSpecification: baseline,
+        episodes: [episode, { ...episode, scalarReward: -0.5 }],
+      })
+    ).toThrow("conflicting episode evidence");
+  });
+
   it("rejects unknown policy fields and unsafe state paths", () => {
     expect(() =>
       evaluateReferencePolicy(

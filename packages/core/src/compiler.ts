@@ -59,6 +59,7 @@ export interface CompiledOntologyPack {
 
 export interface CompiledOntologyPackSet {
   status: "valid" | "invalid";
+  mode: OntologyCompilationMode;
   resolutionHash: string;
   roots: OntologyPackRequirement[];
   packs: CompiledOntologyPack[];
@@ -74,9 +75,13 @@ export interface CompiledOntologyPackSet {
   diagnostics: PackCompilerDiagnostic[];
 }
 
+export type OntologyCompilationMode = "authoring" | "deployment";
+
 export interface CompileOntologyPackSetInput {
   manifests: unknown[];
   roots: OntologyPackRequirement[];
+  /** Authoring can resolve drafts; deployment resolves accepted packs only. */
+  mode?: OntologyCompilationMode;
   contextValues?: Record<string, unknown>;
   /** Indexes of persisted manifests accepted before strict schema validation. */
   legacyManifestIndexes?: number[];
@@ -581,6 +586,16 @@ function buildDefinitions(
     manifest.sourceMappings.forEach((mapping, mappingIndex) => {
       const fieldMappings = mapping.fieldMappings ?? [];
       const targetIdentity = mapping.targetIdentity ?? [];
+      const acceptedAuthorityRefs = mapping.acceptedAuthorityRefs ?? [];
+      if (new Set(acceptedAuthorityRefs).size !== acceptedAuthorityRefs.length) {
+        addDiagnostic(diagnostics, {
+          level: "error",
+          code: "duplicate_source_mapping_authority_ref",
+          ontologyId: manifest.ontologyId,
+          path: `sourceMappings.${mappingIndex}.acceptedAuthorityRefs`,
+          message: `Source mapping ${mapping.id} repeats an accepted authority reference after normalization.`,
+        });
+      }
       const executable =
         mapping.fieldMappings !== undefined ||
         mapping.mappingVersion !== undefined ||
@@ -1047,6 +1062,24 @@ export function compileOntologyPackSet(
   input: CompileOntologyPackSetInput
 ): CompiledOntologyPackSet {
   const diagnostics: PackCompilerDiagnostic[] = [];
+  const requestedMode: unknown = input.mode;
+  const mode: OntologyCompilationMode =
+    requestedMode === undefined || requestedMode === "authoring"
+      ? "authoring"
+      : "deployment";
+  if (
+    requestedMode !== undefined &&
+    requestedMode !== "authoring" &&
+    requestedMode !== "deployment"
+  ) {
+    addDiagnostic(diagnostics, {
+      level: "error",
+      code: "invalid_compilation_mode",
+      path: "mode",
+      message:
+        "Compilation mode must be authoring or deployment; invalid runtime values fail closed as deployment.",
+    });
+  }
   const parsedManifests: OntologyPackManifest[] = [];
   const identities = new Set<string>();
   const legacyManifestIndexes = new Set(input.legacyManifestIndexes ?? []);
@@ -1115,8 +1148,13 @@ export function compileOntologyPackSet(
   const chooseManifest = (requirement: OntologyPackRequirement) => {
     const candidates = catalog.get(requirement.ontologyId) ?? [];
     return (
-      candidates.find((candidate) =>
-        satisfiesOntologyVersionRange(candidate.ontologyVersion, requirement.version)
+      candidates.find(
+        (candidate) =>
+          satisfiesOntologyVersionRange(
+            candidate.ontologyVersion,
+            requirement.version
+          ) &&
+          (mode !== "deployment" || candidate.status === "accepted")
       ) ?? null
     );
   };
@@ -1133,11 +1171,32 @@ export function compileOntologyPackSet(
     const manifest = chooseManifest(requirement);
 
     if (!manifest) {
+      const compatibleUnaccepted =
+        mode === "deployment" &&
+        (catalog.get(requirement.ontologyId) ?? []).some(
+          (candidate) =>
+            candidate.status !== "accepted" &&
+            satisfiesOntologyVersionRange(
+              candidate.ontologyVersion,
+              requirement.version
+            )
+        );
+      const code = compatibleUnaccepted
+        ? requiredBy === null
+          ? "unaccepted_root_pack"
+          : required
+            ? "unaccepted_dependency"
+            : "unaccepted_optional_dependency"
+        : required
+          ? "missing_dependency"
+          : "missing_optional_dependency";
       addDiagnostic(diagnostics, {
         level: required ? "error" : "warning",
-        code: required ? "missing_dependency" : "missing_optional_dependency",
+        code,
         ontologyId: requirement.ontologyId,
-        message: `${requiredBy ?? "Root resolution"} requires ${requirement.ontologyId} at ${requirement.version}, but no compatible version is available.`,
+        message: compatibleUnaccepted
+          ? `${requiredBy ?? "Root resolution"} requires ${requirement.ontologyId} at ${requirement.version}, but deployment mode permits accepted packs only.`
+          : `${requiredBy ?? "Root resolution"} requires ${requirement.ontologyId} at ${requirement.version}, but no compatible version is available.`,
       });
       return;
     }
@@ -1220,6 +1279,7 @@ export function compileOntologyPackSet(
   }
 
   const resolutionPayload = {
+    ...(mode === "deployment" ? { mode } : {}),
     roots,
     packs: packs.map(({ ontologyId, ontologyVersion, contentHash }) => ({
       ontologyId,
@@ -1237,6 +1297,7 @@ export function compileOntologyPackSet(
     status: diagnostics.some((item) => item.level === "error")
       ? "invalid"
       : "valid",
+    mode,
     resolutionHash: semanticHash(resolutionPayload),
     roots,
     packs,

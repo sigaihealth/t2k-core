@@ -138,6 +138,111 @@ describe("reference reward evaluation", () => {
     expect(result.dimensions[0]?.score).toBeCloseTo(0.6);
   });
 
+  it("rejects conflicting latest ties independent of input order", () => {
+    const observations = [
+      {
+        measureRef: completionRate.measureRef,
+        observedValue: 0.6,
+        baselineValue: 0.4,
+        observationWindow: "7d",
+        observedAt: "2026-07-18T00:00:00.000Z",
+      },
+      {
+        measureRef: completionRate.measureRef,
+        observedValue: 0.9,
+        baselineValue: 0.4,
+        observationWindow: "7d",
+        observedAt: "2026-07-18T00:00:00.000Z",
+      },
+    ];
+
+    for (const ordered of [observations, [...observations].reverse()]) {
+      expect(() =>
+        evaluateReferenceReward({ rewardSpec: [completionRate], observations: ordered })
+      ).toThrow("conflicting latest observations");
+    }
+  });
+
+  it("rejects mixed-type observations and baselines for numeric aggregation", () => {
+    const average = { ...completionRate, aggregation: "average" as const };
+    const numericObservation = {
+      measureRef: completionRate.measureRef,
+      observedValue: 0.6,
+      baselineValue: 0.4,
+      observationWindow: "7d",
+      observedAt: "2026-07-17T00:00:00.000Z",
+    };
+
+    expect(() =>
+      evaluateReferenceReward({
+        rewardSpec: [average],
+        observations: [
+          numericObservation,
+          {
+            ...numericObservation,
+            observedValue: "unknown",
+            observedAt: "2026-07-18T00:00:00.000Z",
+          },
+        ],
+      })
+    ).toThrow("only finite numeric observations");
+    expect(() =>
+      evaluateReferenceReward({
+        rewardSpec: [average],
+        observations: [
+          numericObservation,
+          {
+            ...numericObservation,
+            baselineValue: null,
+            observedAt: "2026-07-18T00:00:00.000Z",
+          },
+        ],
+      })
+    ).toThrow("baselines to be all finite numbers or all null");
+  });
+
+  it("requires method-specific evidence in strict mode without breaking legacy mode", () => {
+    const observation = {
+      measureRef: completionRate.measureRef,
+      observedValue: 0.8,
+      baselineValue: 0.4,
+      observationWindow: "7d",
+      observedAt: "2026-07-18T00:00:00.000Z",
+    };
+    const strictMissing = evaluateReferenceReward({
+      rewardSpec: [completionRate],
+      observations: [observation],
+      evidenceMode: "strict",
+    });
+    const strictComplete = evaluateReferenceReward({
+      rewardSpec: [completionRate],
+      observations: [
+        {
+          ...observation,
+          provenance: { humanReviewRef: "review:2026-07-18" },
+        },
+      ],
+      evidenceMode: "strict",
+    });
+
+    expect(strictMissing).toMatchObject({
+      lifecycleStatus: "incomplete",
+      dimensions: [
+        expect.objectContaining({
+          complete: false,
+          explanation: expect.stringContaining("human_review attribution"),
+        }),
+      ],
+    });
+    expect(strictComplete.lifecycleStatus).toBe("complete");
+    expect(
+      evaluateReferenceReward({
+        rewardSpec: [completionRate],
+        observations: [observation],
+      }).lifecycleStatus
+    ).toBe("complete");
+  });
+
   it("rejects observations with invalid timestamps", () => {
     expect(() =>
       evaluateReferenceReward({

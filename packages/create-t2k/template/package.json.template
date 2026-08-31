@@ -15,6 +15,6 @@
     "lifecycle": "node src/lifecycle.mjs"
   },
   "dependencies": {
-    "@t2kai/core": "0.4.3"
+    "@t2kai/core": "0.4.4"
   }
 }
