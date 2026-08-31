@@ -61,7 +61,8 @@ computations:
 - `evaluate_purpose_limited_access` applies an explicit-deny-precedence,
   default-deny policy and returns a deterministic receipt. The receipt is not
   authentication, an IAM decision, a bearer token, or permission to disclose
-  data.
+  data. Role, purpose, relationship, category, and jurisdiction selectors are
+  passed to Core exactly as supplied; MCP does not trim them into a match.
 
 A typical local analysis maps independently supplied records and then passes
 their complete results to `propose_canonical_reconciliation`:

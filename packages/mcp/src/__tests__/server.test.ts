@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import {
+  evaluatePurposeLimitedAccess,
+  type PurposeLimitedAccessPolicy,
+  type PurposeLimitedAccessRequest,
+} from "@t2kai/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -776,6 +781,79 @@ describe("T2K MCP semantic mode", () => {
         },
       });
       expect(invalidEntityProposal.isError).toBe(true);
+    } finally {
+      await client.close();
+      await runtime.close();
+    }
+  });
+
+  it("preserves exact access selectors with direct-Core parity", async () => {
+    const runtime = await createT2kMcpRuntime();
+    const client = await connect(runtime);
+    const basePolicy = purposeAccessPolicy as PurposeLimitedAccessPolicy;
+    const baseRequest = purposeAccessRequest as PurposeLimitedAccessRequest;
+    const cases: Array<{
+      label: string;
+      policy: PurposeLimitedAccessPolicy;
+      request: PurposeLimitedAccessRequest;
+    }> = [
+      {
+        label: "role",
+        policy: structuredClone(basePolicy),
+        request: {
+          ...structuredClone(baseRequest),
+          requestKey: "request-role-whitespace",
+          principalRoles: [" case_reviewer "],
+        },
+      },
+      {
+        label: "purpose",
+        policy: {
+          ...structuredClone(basePolicy),
+          rules: [
+            {
+              ...structuredClone(basePolicy.rules[0]!),
+              purposes: [" benefit_review "],
+            },
+          ],
+        },
+        request: {
+          ...structuredClone(baseRequest),
+          requestKey: "request-purpose-whitespace",
+        },
+      },
+      {
+        label: "data category",
+        policy: structuredClone(basePolicy),
+        request: {
+          ...structuredClone(baseRequest),
+          requestKey: "request-category-whitespace",
+          dataCategories: [" case_summary "],
+        },
+      },
+    ];
+
+    try {
+      for (const testCase of cases) {
+        const direct = evaluatePurposeLimitedAccess(
+          testCase.policy,
+          testCase.request,
+        );
+        expect(direct, testCase.label).toMatchObject({
+          decision: "deny",
+          reasonCode: "default_deny",
+        });
+
+        const response = await client.callTool({
+          name: "evaluate_purpose_limited_access",
+          arguments: {
+            policy: testCase.policy,
+            request: testCase.request,
+          },
+        });
+        expect(response.isError, testCase.label).not.toBe(true);
+        expect(structuredResult(response), testCase.label).toEqual(direct);
+      }
     } finally {
       await client.close();
       await runtime.close();

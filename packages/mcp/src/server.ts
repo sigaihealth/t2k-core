@@ -368,12 +368,20 @@ const normalizedNonBlankStringSchema = nonBlankStringSchema.overwrite(
   (value) => value.trim(),
 );
 const uniqueNonBlankStringsSchema = z
+  .array(nonBlankStringSchema)
+  .refine(
+    (values) => new Set(values).size === values.length,
+    "Values must be unique.",
+  );
+const normalizedUniqueNonBlankStringsSchema = z
   .array(normalizedNonBlankStringSchema)
   .refine(
     (values) => new Set(values).size === values.length,
     "Values must be unique after trimming.",
   );
 const nonEmptyUniqueStringsSchema = uniqueNonBlankStringsSchema.min(1);
+const nonEmptyNormalizedUniqueStringsSchema =
+  normalizedUniqueNonBlankStringsSchema.min(1);
 const sourceAuthenticationStateSchema = z.enum(SOURCE_AUTHENTICATION_STATES);
 const sourceNormalizationSchema = z.enum([
   "trim",
@@ -410,7 +418,7 @@ const sourceMappingSchema = z
     sourceLocator: nonBlankStringSchema,
     sourceSystem: nonBlankStringSchema.optional(),
     sourceLocatorMatch: z.enum(["exact", "prefix"]).optional(),
-    acceptedAuthorityRefs: nonEmptyUniqueStringsSchema.optional(),
+    acceptedAuthorityRefs: nonEmptyNormalizedUniqueStringsSchema.optional(),
     sourceSchemaVersion: nonBlankStringSchema.optional(),
     fields: z.string().optional(),
     object: nonBlankStringSchema,

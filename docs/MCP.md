@@ -66,6 +66,10 @@ pipeline. All four tools are read-only in every mode and do not fetch sources,
 use credentials, persist evidence, merge entities, accept truth, authenticate
 principals, or enforce disclosure.
 
+Access-policy selector strings remain exact across transport. MCP does not
+trim roles, purposes, relationships, data categories, or jurisdictions into a
+match that direct Core evaluation would deny.
+
 Tool results contain both human-readable JSON text and `structuredContent`, so
 hosts can display the result or pass it to another tool without scraping prose.
 Every tool call is bounded by the limits published in `t2k://capabilities`;

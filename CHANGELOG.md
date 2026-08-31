@@ -42,6 +42,9 @@ rules in the versioned specification.
   method-specific evidence is opt-in for migration safety.
 - Source selectors are optional, so existing mappings retain their previous
   routing behavior and hash shape until selectors are declared.
+- MCP trims only `acceptedAuthorityRefs`. Roles, purposes, relationships,
+  categories, jurisdictions, and other Core selector arrays retain exact
+  caller strings so transport cannot broaden an access decision.
 - There is no database migration. The 0.4.3 PostgreSQL compatibility and
   legacy-reward quarantine remain unchanged.
 
