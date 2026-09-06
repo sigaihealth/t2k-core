@@ -21,10 +21,10 @@ dispatch outcomes.
 
 ## API
 
-The subpath is included in the 0.5.0 release candidate and subsequent 0.5 release.
-Install the candidate with `npm install @t2kai/core@0.5.0-rc.1`; it was not present
-in 0.4.4. Its experimental status and capability limits remain explicit after
-package promotion. Existing ontology-pack and lifecycle interfaces are unchanged.
+The subpath is included in the stable 0.5.0 package.
+Install it with `npm install @t2kai/core@0.5.0`; it was not present
+in 0.4.4. Its experimental status and capability limits remain explicit within
+the stable package. Existing ontology-pack and lifecycle interfaces are unchanged.
 
 ```ts
 import { compileOntologyPackSet } from "@t2kai/core/compiler";

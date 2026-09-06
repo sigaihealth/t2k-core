@@ -29,7 +29,7 @@ subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
 and persisted reconciliation-review APIs remain available in this
-`@t2kai/core@0.5.0-rc.1` release candidate.
+`@t2kai/core@0.5.0` stable release.
 
 ## Experimental graph reasoning
 
