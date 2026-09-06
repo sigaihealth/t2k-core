@@ -6,6 +6,58 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.5.0-rc.1] - 2026-09-06
+
+### Added
+
+- Experimental `@t2kai/core/reasoning` subpath with ontology-bound typed graph
+  programs, bounded read-only execution, claim-revision evidence, explicit
+  unresolved results, and deterministic execution receipts.
+- A pinned, runtime-computed labeled-task evaluator with disjoint case checks,
+  baseline comparison, hard-constraint failures, and reproducible failure records.
+- Provider-neutral automatic function authoring with bounded compile/test repair,
+  immutable signatures, development-only prompts, and per-attempt hashes.
+- Provider-adapter helpers for typed program schemas and ontology dependency
+  context, with included definitions mapped to the full pinned resolution.
+- Reviewed capability requirements that reject explicit unsupported operations
+  before provider dispatch, plus diagnostics for undeclared development identities.
+- Bounded structured repair diagnostics for answer, evidence, data, and compiler
+  failures, retaining complete development failure receipts in attempt records.
+- Shared signature/ontology preflight for development and final cases before model
+  calls or evaluation, explicit V2 supporting/considered/exclusion/per-row evidence
+  assertions, and bounded repair feedback with recorded request-budget failures.
+- An optional awaited completed-attempt checkpoint for generation hosts, with
+  immutable receipts and unclassified propagation of host checkpoint failures.
+- A verified executable build manifest in packed Core artifacts, suitable for
+  host acceptance bindings and independent installed-byte verification.
+- Release workflows select explicit `next` for prereleases and `latest` for
+  stable versions only after matching the exact package/tag identity, while
+  preserving signed-tag, protected-main and npm provenance gates.
+- A Harborlight composition example covering 15 synthetic cases, including
+  missing, stale, unaccepted, and contradictory evidence and a deliberately faulty
+  capacity filter. Passing this evaluator does not authorize deployment or action.
+
+### Compatibility
+
+- Core and create-t2k advance to 0.5.0-rc.1 under npm's `next` channel. Both
+  scaffold profiles pin this exact Core version. The normative ontology-pack
+  schema, existing policy replay and promotion rules, database layout, and MCP
+  tools are unchanged. Experimental function artifacts remain separate from
+  descriptive `reasoningFunctions` in ontology packs.
+- Experimental V1 evaluation suites are rejected rather than silently upgrading
+  ambiguous `requiredClaimIds`. Review the intended evidence roles, freeze a V2
+  suite and hash, and rerun evaluation before relying on a new acceptance report.
+
+## [`@t2kai/mcp` 0.4.0-rc.1] - 2026-09-06
+
+### Changed
+
+- Depends on the coordinated 0.5.0 Core release candidate. The packed smoke test
+  verifies Core resolution from the installed MCP entry, including version and
+  tarball origin, so a nested registry fallback cannot pass unnoticed.
+- Existing MCP tools, safe defaults and human-governance boundaries are unchanged;
+  the new Core graph-reasoning API is not exposed as an MCP activation tool.
+
 ## [0.4.4] - 2026-08-30
 
 ### Security

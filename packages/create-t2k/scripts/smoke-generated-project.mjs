@@ -11,6 +11,7 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const coreRoot = path.join(workspaceRoot, "packages/core");
 const smokeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "create-t2k-smoke-"));
+const coreManifest = JSON.parse(await fs.readFile(path.join(coreRoot, "package.json"), "utf8"));
 
 async function installGeneratedProject({
   targetDirectory,
@@ -26,6 +27,9 @@ async function installGeneratedProject({
   });
   const manifestPath = path.join(project.targetPath, "package.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  if (manifest.dependencies?.["@t2kai/core"] !== coreManifest.version) {
+    throw new Error(`Generated ${profile} does not pin this release's exact Core version.`);
+  }
   manifest.dependencies["@t2kai/core"] = `file:${coreTarball}`;
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
@@ -33,6 +37,18 @@ async function installGeneratedProject({
     cwd: project.targetPath,
     stdio: "inherit",
   });
+  const installedCore = JSON.parse(await fs.readFile(
+    path.join(project.targetPath, "node_modules/@t2kai/core/package.json"), "utf8",
+  ));
+  const installedLock = JSON.parse(await fs.readFile(
+    path.join(project.targetPath, "package-lock.json"), "utf8",
+  ));
+  const lockedCore = installedLock.packages?.["node_modules/@t2kai/core"];
+  if (installedCore.version !== coreManifest.version ||
+      lockedCore?.version !== coreManifest.version ||
+      !lockedCore.resolved?.endsWith(path.basename(coreTarball))) {
+    throw new Error(`Generated ${profile} did not install the packed Core release.`);
+  }
   const output = execFileSync("npm", ["run", "check"], {
     cwd: project.targetPath,
     encoding: "utf8",

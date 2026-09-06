@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -536,8 +537,27 @@ try {
   const installedLock = JSON.parse(
     await fs.readFile(path.join(smokeRoot, "package-lock.json"), "utf8"),
   );
-  const installedCoreResolution =
-    installedLock.packages?.["node_modules/@t2kai/core"]?.resolved;
+  // Resolve from the installed MCP entry, not the smoke root. A mismatched
+  // dependency range can install a second registry Core inside MCP while the
+  // top-level tarball check still passes.
+  const installedMcpRequire = createRequire(
+    path.join(smokeRoot, "node_modules/@t2kai/mcp/dist/index.js"),
+  );
+  const actualCoreManifestPath = installedMcpRequire.resolve("@t2kai/core/package.json");
+  const expectedCoreManifestPath = path.join(smokeRoot, "node_modules/@t2kai/core/package.json");
+  const expectedCoreManifest = JSON.parse(
+    await fs.readFile(path.join(workspaceRoot, "packages/core/package.json"), "utf8"),
+  );
+  const actualCoreManifest = JSON.parse(await fs.readFile(actualCoreManifestPath, "utf8"));
+  const installedCore = installedLock.packages?.["node_modules/@t2kai/core"];
+  const installedCoreResolution = installedCore?.resolved;
+  if (
+    await fs.realpath(actualCoreManifestPath) !== await fs.realpath(expectedCoreManifestPath) ||
+    actualCoreManifest.version !== expectedCoreManifest.version ||
+    installedCore?.version !== expectedCoreManifest.version
+  ) {
+    throw new Error("Installed MCP does not resolve the exact packed Core version.");
+  }
   if (
     typeof installedCoreResolution !== "string" ||
     !installedCoreResolution.includes(path.basename(coreTarball))

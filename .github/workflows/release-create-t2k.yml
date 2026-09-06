@@ -92,4 +92,12 @@ jobs:
       - run: npm run check:postgres
         env:
           T2K_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/t2k_reference_test
-      - run: npm publish --workspace create-t2k --provenance
+      - name: Select verified release channel
+        id: release-channel
+        run: |
+          channel=$(node scripts/release-channel.mjs packages/create-t2k/package.json)
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: Publish verified release
+        run: npm publish --workspace create-t2k --tag "$RELEASE_CHANNEL" --provenance
+        env:
+          RELEASE_CHANNEL: ${{ steps.release-channel.outputs.channel }}

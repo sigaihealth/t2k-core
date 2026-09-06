@@ -44,7 +44,7 @@ of being flattened into a monolithic record.
 Node.js 20.10 or newer is required.
 
 ```bash
-npx create-t2k@0.4.4 my-integration-hub --profile integration-hub
+npx create-t2k@0.5.0-rc.1 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -176,7 +176,7 @@ Pin the database-free MCP server in a local host:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.1"]
+      "args": ["-y", "@t2kai/mcp@0.4.0-rc.1"]
     }
   }
 }

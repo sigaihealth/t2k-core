@@ -92,4 +92,12 @@ jobs:
           T2K_RELEASE_COMMIT_SHA: ${{ steps.github-release-tag.outputs.commit-sha }}
           T2K_RELEASE_MAIN_REF: refs/remotes/origin/main
           T2K_RELEASE_TAG_OBJECT_SHA: ${{ steps.github-release-tag.outputs.tag-object-sha }}
-      - run: npm publish --workspace @t2kai/mcp --access public --provenance
+      - name: Select verified release channel
+        id: release-channel
+        run: |
+          channel=$(node scripts/release-channel.mjs packages/mcp/package.json)
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: Publish verified release
+        run: npm publish --workspace @t2kai/mcp --access public --tag "$RELEASE_CHANNEL" --provenance
+        env:
+          RELEASE_CHANNEL: ${{ steps.release-channel.outputs.channel }}
