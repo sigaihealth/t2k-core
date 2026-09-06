@@ -6,6 +6,42 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-06
+
+### Changed
+
+- Promote the 0.5.0-rc.1 Core and create-t2k candidate scope to stable package
+  versions under npm's `latest` channel. Both scaffold profiles pin Core 0.5.0
+  exactly, and current installation examples use the coordinated stable versions.
+- Retain the executable build manifest, bounded graph interpreter, V2 labeled
+  evaluator and provider-neutral authoring API introduced in the candidate.
+  The graph-reasoning subpath remains explicitly experimental; stable package
+  publication does not expand its operations or authorize downstream actions.
+
+### Compatibility
+
+- No runtime, schema, database or artifact-format changes from 0.5.0-rc.1.
+  Hosts must still revalidate their execution bindings when adopting the new
+  package version; candidate or private-preview acceptance does not silently
+  authorize a stable installation.
+- Keep the candidate's V1 evaluation-suite migration requirements: freeze
+  reviewed V2 evidence-role assertions and rerun evaluation.
+
+## [`@t2kai/mcp` 0.4.0] - 2026-09-06
+
+### Security
+
+- Refresh the workspace lockfile's MCP dependency chain from `qs@6.15.3` to
+  `qs@6.16.0` within the existing dependency ranges, resolving the moderate
+  GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g audit findings. Consumers with
+  existing lockfiles should refresh their transitive dependency resolution.
+
+### Changed
+
+- Pin the coordinated stable `@t2kai/core@0.5.0` release exactly. Existing MCP
+  tools, safe defaults and human-governance boundaries are unchanged from
+  0.4.0-rc.1; graph-function activation is not exposed through MCP.
+
 ## [0.5.0-rc.1] - 2026-09-06
 
 ### Added
