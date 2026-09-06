@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
+import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { verifyReasoningBuild } from "./reasoning-build.mjs";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -208,8 +210,8 @@ if (
 `;
 
 try {
-  const packResult = JSON.parse(
-    execFileSync(
+  const originalManifest = await readFile(path.join(packageRoot, "package.json"));
+  const pack = () => JSON.parse(execFileSync(
       "npm",
       [
         "pack",
@@ -221,9 +223,18 @@ try {
         "--json",
       ],
       { cwd: workspaceRoot, encoding: "utf8" }
-    )
-  );
+    ));
+  const packResult = pack();
   const tarball = path.join(smokeRoot, packResult[0].filename);
+  const firstTarball = await readFile(tarball);
+  assert.deepEqual(await readFile(path.join(packageRoot, "package.json")), originalManifest,
+    "Packing must restore the original source package manifest.");
+  const repeatedPack = pack();
+  assert.equal(repeatedPack[0].integrity, packResult[0].integrity, "Repeated packs must have identical integrity.");
+  assert.deepEqual(await readFile(tarball), firstTarball, "Repeated packs must have identical bytes.");
+  assert.deepEqual(await readFile(path.join(packageRoot, "package.json")), originalManifest,
+    "Repeated packing must leave the source manifest unchanged.");
+  assert.ok(!packResult[0].files.some((file) => file.path.startsWith("tmp/")), "The recovery journal must never ship.");
 
   await writeFile(
     path.join(smokeRoot, "package.json"),
@@ -239,13 +250,24 @@ try {
     stdio: "inherit",
   });
 
-  const installedManifest = JSON.parse(
-    await readFile(
-      path.join(smokeRoot, "node_modules/@t2kai/core/package.json"),
-      "utf8"
-    )
-  );
-  console.log(`Packed @t2kai/core@${installedManifest.version} smoke test passed.`);
+  const installedManifestPath = path.join(smokeRoot, "node_modules/@t2kai/core/package.json");
+  const installedManifestBytes = await readFile(installedManifestPath);
+  const installedManifest = JSON.parse(installedManifestBytes.toString("utf8"));
+  const build = verifyReasoningBuild(installedManifestPath);
+  assert.equal(build.version, installedManifest.version);
+  assert.ok(Object.hasOwn(installedManifest.t2kReasoningBuild.files, "dist/reasoning.js"));
+  assert.ok(Object.hasOwn(installedManifest.t2kReasoningBuild.files, "dist/schema/t2k-ontology-pack.v1.schema.json"));
+  const executablePath = path.join(path.dirname(installedManifestPath), "dist/reasoning.js");
+  const executableBytes = await readFile(executablePath);
+  await writeFile(executablePath, Buffer.concat([executableBytes, Buffer.from("\n// tampered executable\n")]));
+  assert.throws(() => verifyReasoningBuild(installedManifestPath), /does not match its build manifest/);
+  await writeFile(executablePath, executableBytes);
+  installedManifest.dependencies.pg = "tampered";
+  await writeFile(installedManifestPath, JSON.stringify(installedManifest));
+  assert.throws(() => verifyReasoningBuild(installedManifestPath), /does not match its build manifest/);
+  await writeFile(installedManifestPath, installedManifestBytes);
+  assert.deepEqual(verifyReasoningBuild(installedManifestPath), build);
+  console.log(`Packed @t2kai/core@${installedManifest.version} smoke test passed; repeatable tarball and build ${build.buildHash} verified.`);
 } finally {
   await rm(smokeRoot, { recursive: true, force: true });
 }

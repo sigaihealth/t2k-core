@@ -1,6 +1,6 @@
 # Experimental graph functions
 
-This source-checkout prototype makes ontology-declared reasoning functions
+The experimental `@t2kai/core/reasoning` module makes ontology-declared reasoning functions
 executable. It provides deterministic graph computation and a labeled-task
 evaluator. It does not promote policies, accept claims, authorize dispatch, or
 change an ontology.
@@ -21,8 +21,10 @@ dispatch outcomes.
 
 ## API
 
-The new subpath is available after building this checkout. It is not part of the
-published 0.4.4 tarball.
+The subpath is included in the 0.5.0 release candidate and subsequent 0.5 release.
+Install the candidate with `npm install @t2kai/core@0.5.0-rc.1`; it was not present
+in 0.4.4. Its experimental status and capability limits remain explicit after
+package promotion. Existing ontology-pack and lifecycle interfaces are unchanged.
 
 ```ts
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
@@ -314,3 +316,20 @@ input bounds. Limits fail explicitly and never silently truncate a result.
 Candidate authoring is implemented. Evaluation of schema and mapping changes
 remains future work. Durable review and activation belong to a hosting application;
 this runtime continues to return `authorization: "not_authorized"`.
+
+
+## Package identity and preview migration
+
+Published tarballs carry `package.json.t2kReasoningBuild`, with format
+`t2k.reasoning-build.v1`, `buildHash`, and per-file `files` digests. Hosts must
+verify the declared manifest against installed bytes before using it to bind an
+activation. npm provenance separately identifies the public source commit and
+publishing workflow; the build manifest alone is not authentication.
+
+When replacing a private preview package, retain the original program, ontology,
+snapshot and receipt artifacts. Recompile against the published build, migrate
+any V1 suite using reviewed evidence roles, rerun frozen V2 final evaluation, and
+record a new host acceptance bound to the installed package identity. Do not
+rewrite historic receipts or treat the previous build's acceptance as approval
+of different executable bytes. Follow the host's explicit revalidation and
+activation workflow before allowing new executions.

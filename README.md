@@ -35,6 +35,9 @@ network, private packs, and customer data are separate products.
 - a server-side REST client for the hosted control plane;
 - an executable reference policy and held-out replay evaluator;
 - deterministic reward computation and per-policy aggregation;
+- experimental ontology-bound graph functions, bounded read-only execution,
+  explicit evidence receipts, independent V2 evaluation, and provider-neutral
+  candidate generation with development-case repair;
 - a Postgres reference lifecycle with frozen contexts, authorization, execution
   receipts, observations, promotion, exact rollback, and a hash-chained ledger;
 - conformance fixtures and an independently runnable synthetic example;
@@ -44,12 +47,20 @@ network, private packs, and customer data are separate products.
   for opt-in lifecycle writes, four non-mutating integration tools, and no
   agent-accessible human-governance transitions.
 
+## 0.5 release candidate
+
+The coordinated candidate is `@t2kai/core@0.5.0-rc.1`,
+`create-t2k@0.5.0-rc.1`, and `@t2kai/mcp@0.4.0-rc.1`, published under `next`.
+Graph reasoning remains an explicitly experimental API even after the package
+promotes to stable 0.5.0. See the [release notes](docs/releases/0.5.0.md) and
+[graph-functions API and limits](docs/GRAPH_FUNCTIONS.md).
+
 ## Quick Start
 
 Requirements: Node.js 20.10 or newer and npm.
 
 ```bash
-npx create-t2k@0.4.4 my-decision-loop
+npx create-t2k@0.5.0-rc.1 my-decision-loop
 cd my-decision-loop
 npm start
 ```
@@ -73,7 +84,7 @@ to delete the disposable lifecycle data.
 Generate a governed integration-hub project instead:
 
 ```bash
-npx create-t2k@0.4.4 my-integration-hub --profile integration-hub
+npx create-t2k@0.5.0-rc.1 my-integration-hub --profile integration-hub
 cd my-integration-hub
 npm start
 ```
@@ -107,8 +118,8 @@ npm run example:harborlight:reasoning
 This composes dispatch feasibility checks over a frozen synthetic graph, returns
 claim evidence and exclusions, and compares a repaired function with a deliberately
 faulty baseline on 15 labeled cases. See [Graph functions](docs/GRAPH_FUNCTIONS.md)
-for the API, interpretation, and limits. This is a source-checkout experiment;
-it is not included in the currently published 0.4.4 package.
+for the API, interpretation, and limits. The example runs from this checkout;
+the experimental runtime itself ships in the 0.5 release candidate.
 
 Run the synthetic public-benefits integration example:
 
@@ -166,7 +177,7 @@ Connect an MCP host without a database or credentials:
   "mcpServers": {
     "t2k": {
       "command": "npx",
-      "args": ["-y", "@t2kai/mcp@0.3.1"]
+      "args": ["-y", "@t2kai/mcp@0.4.0-rc.1"]
     }
   }
 }
@@ -188,8 +199,8 @@ The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm install @t2kai/core@0.4.4
-npm install @t2kai/mcp@0.3.1
+npm install @t2kai/core@0.5.0-rc.1
+npm install @t2kai/mcp@0.4.0-rc.1
 ```
 
 ```ts
@@ -207,7 +218,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.4.4` includes the governed source-mapping,
+`@t2kai/core@0.5.0-rc.1` includes the governed source-mapping,
 canonical-reconciliation, entity-resolution, and purpose-access exports plus
 the persisted reconciliation review and lineage path documented in the core
 guide.

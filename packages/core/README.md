@@ -16,6 +16,8 @@ The package includes:
 - deterministic purpose-limited access evaluation and disclosure receipts;
 - an executable reference rule policy and held-out replay evaluator;
 - deterministic reward assessment and per-policy aggregation;
+- experimental typed graph functions with bounded read-only execution, V2
+  labeled evaluation, evidence receipts, and provider-neutral candidate repair;
 - a Postgres reference lifecycle for contexts, episodes, receipts, evaluation,
   promotion, rollback, immutable reconciliation proposals, canonical revision
   lineage, governed reactivation, and an append-only event chain;
@@ -26,8 +28,50 @@ lifecycle. Node.js 20.10 or newer is required. The compiler and Postgres
 subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
-and persisted reconciliation-review APIs described below are published in
-`@t2kai/core@0.4.4`.
+and persisted reconciliation-review APIs remain available in this
+`@t2kai/core@0.5.0-rc.1` release candidate.
+
+## Experimental graph reasoning
+
+```ts
+import {
+  compileGraphFunction,
+  executeGraphFunction,
+  preflightGraphEvaluationSuite,
+  evaluateGraphFunction,
+  generateGraphFunction,
+} from "@t2kai/core/reasoning";
+```
+
+Compile a typed JSON program against an accepted ontology, execute against one
+host-authorized snapshot, and retain its result and claim-revision evidence.
+The interpreter supports lookup, relation traversal, conjunctive filters,
+projection, and count/sum/min/max/mean aggregation. It does not execute arbitrary
+code, fetch sources, call models, or authorize actions. Missing, stale or
+conflicting evidence returns `needs_review`; even completed results carry
+`authorization: "not_authorized"`.
+
+`generateGraphFunction` accepts a host-supplied provider and repairs programs
+against development cases within a bounded attempt budget. A separate trusted
+harness preflights and freezes final V2 evaluation suites. It must keep final
+labels outside model prompts and candidate repair. There is no built-in model
+credential, durable activation service, or proof of real-world correctness.
+
+The artifact remains `t2k.graph-function.v1`. Private-preview V1 evaluation
+suites require a reviewed migration to `t2k.graph-evaluation.v2`: assign explicit
+supporting, considered, exclusion and per-row evidence roles, freeze a new hash,
+and rerun evaluation. Legacy evidence assertions are rejected, never inferred.
+
+The package includes `package.json.t2kReasoningBuild` with format
+`t2k.reasoning-build.v1`, an executable build hash and a file-digest manifest.
+Hosts can bind acceptance evidence to those exact executable bytes. This is
+build identity, not a signature or a trust verdict; validate registry provenance
+and independently authorize activation. A package migration can change the build
+identity even when a program's JSON is unchanged.
+
+See the complete [graph-function API, examples and bounds](https://github.com/sigaihealth/t2k-core/blob/main/docs/GRAPH_FUNCTIONS.md).
+The graph reasoning subpath remains experimental through the stable 0.5 release;
+the normative ontology schema and existing lifecycle interfaces are unchanged.
 
 ## Compile Packs Locally
 

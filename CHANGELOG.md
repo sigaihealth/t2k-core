@@ -6,6 +6,8 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+## [0.5.0-rc.1] - 2026-09-06
+
 ### Added
 
 - Experimental `@t2kai/core/reasoning` subpath with ontology-bound typed graph
@@ -26,19 +28,35 @@ rules in the versioned specification.
   assertions, and bounded repair feedback with recorded request-budget failures.
 - An optional awaited completed-attempt checkpoint for generation hosts, with
   immutable receipts and unclassified propagation of host checkpoint failures.
+- A verified executable build manifest in packed Core artifacts, suitable for
+  host acceptance bindings and independent installed-byte verification.
+- Release workflows select explicit `next` for prereleases and `latest` for
+  stable versions only after matching the exact package/tag identity, while
+  preserving signed-tag, protected-main and npm provenance gates.
 - A Harborlight composition example covering 15 synthetic cases, including
   missing, stale, unaccepted, and contradictory evidence and a deliberately faulty
   capacity filter. Passing this evaluator does not authorize deployment or action.
 
 ### Compatibility
 
-- This additive prototype leaves the normative ontology-pack schema, existing
-  policy replay and promotion rules, database layout, MCP tools, and published
-  package versions unchanged. Experimental function artifacts are separate from
+- Core and create-t2k advance to 0.5.0-rc.1 under npm's `next` channel. Both
+  scaffold profiles pin this exact Core version. The normative ontology-pack
+  schema, existing policy replay and promotion rules, database layout, and MCP
+  tools are unchanged. Experimental function artifacts remain separate from
   descriptive `reasoningFunctions` in ontology packs.
 - Experimental V1 evaluation suites are rejected rather than silently upgrading
   ambiguous `requiredClaimIds`. Review the intended evidence roles, freeze a V2
   suite and hash, and rerun evaluation before relying on a new acceptance report.
+
+## [`@t2kai/mcp` 0.4.0-rc.1] - 2026-09-06
+
+### Changed
+
+- Depends on the coordinated 0.5.0 Core release candidate. The packed smoke test
+  verifies Core resolution from the installed MCP entry, including version and
+  tarball origin, so a nested registry fallback cannot pass unnoticed.
+- Existing MCP tools, safe defaults and human-governance boundaries are unchanged;
+  the new Core graph-reasoning API is not exposed as an MCP activation tool.
 
 ## [0.4.4] - 2026-08-30
 
