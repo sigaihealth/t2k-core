@@ -1,0 +1,46 @@
+{
+  "manifestType": "t2k.ontology-pack",
+  "manifestVersion": "1.0",
+  "ontologyId": "harborlight.reasoning",
+  "ontologyVersion": "1.0.0",
+  "label": "Harborlight dispatch reasoning",
+  "description": "Synthetic graph-function experiment; not a production dispatch ontology.",
+  "packKind": "workflow",
+  "status": "accepted",
+  "scope": { "domain": "synthetic_dispatch", "description": "Read-only feasibility checks." },
+  "objectTypes": [
+    {
+      "id": "job", "label": "Job", "family": "Work", "nodeKind": "case",
+      "purpose": "A synthetic service request", "identity": ["job_id"],
+      "properties": [
+        { "id": "hours", "valueType": "number", "required": true, "description": "Required crew hours", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "skill", "valueType": "string", "required": true, "description": "Required qualification", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "start_minute", "valueType": "integer", "required": true, "description": "Start minute in the shared synthetic service day", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "end_minute", "valueType": "integer", "required": true, "description": "End minute in the shared synthetic service day", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "note", "valueType": "string", "required": false, "description": "Untrusted source text", "authorityDomain": "dispatch", "temporal": true }
+      ]
+    },
+    {
+      "id": "route", "label": "Route", "family": "Work", "nodeKind": "workflow",
+      "purpose": "A candidate dispatch route", "identity": ["route_id"], "properties": []
+    },
+    {
+      "id": "crew", "label": "Crew", "family": "Team", "nodeKind": "organization",
+      "purpose": "A synthetic dispatch crew", "identity": ["crew_id"],
+      "properties": [
+        { "id": "available", "valueType": "boolean", "required": true, "description": "Confirmed availability", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "capacity_hours", "valueType": "number", "required": true, "description": "Remaining crew hours", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "skills", "valueType": "string_list", "required": true, "description": "Verified qualifications", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "start_minute", "valueType": "integer", "required": true, "description": "Availability begins in the shared synthetic service day", "authorityDomain": "dispatch", "temporal": true },
+        { "id": "end_minute", "valueType": "integer", "required": true, "description": "Availability ends in the shared synthetic service day", "authorityDomain": "dispatch", "temporal": true }
+      ]
+    }
+  ],
+  "structuralRelationships": [
+    { "from": "job", "property": "candidate_route", "to": "route", "cardinality": "many_to_many" },
+    { "from": "route", "property": "staffed_by", "to": "crew", "cardinality": "many_to_many" }
+  ],
+  "reasoningFunctions": [
+    { "id": "find_feasible_dispatch_options", "input": "Job identifier in an authorized snapshot", "output": "Feasible route and crew options with evidence", "humanCheckpoint": "Dispatch owner authorizes any subsequent action." }
+  ]
+}

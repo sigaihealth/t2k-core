@@ -39,6 +39,11 @@
       "import": "./dist/compiler.js",
       "default": "./dist/compiler.js"
     },
+    "./reasoning": {
+      "types": "./dist/reasoning.d.ts",
+      "import": "./dist/reasoning.js",
+      "default": "./dist/reasoning.js"
+    },
     "./postgres": {
       "types": "./dist/reference-postgres.d.ts",
       "import": "./dist/reference-postgres.js",

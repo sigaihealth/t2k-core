@@ -3,6 +3,21 @@
 This roadmap distinguishes implemented behavior from intended architecture.
 Dates are deliberately omitted until maintainers can defend them.
 
+## Unreleased graph-function experiment
+
+- Separate, typed executable artifacts compiled against ontology definitions
+- Bounded read-only graph operators with evidence and explicit unknown results
+- A runtime-computed evaluator and a 15-case synthetic Harborlight experiment
+- Bounded automatic function authoring with compiler and development-test feedback
+- Typed program schemas, ontology dependency context, and explicit capability preflight
+- Structured answer/evidence diagnostics and awaited completed-attempt checkpoints
+- Still future work: schema/mapping-change evaluation, public MCP exposure,
+  maintained views, cross-project reuse, and optional logical reasoning
+
+Hosted registry review, activation, and Studio UI are separate application
+capabilities outside this public Core package. Core returns computation and
+evaluation receipts with `authorization: "not_authorized"`.
+
 ## Shipped in 0.1
 
 - Exact JSON Schema validation for current T2K ontology packs

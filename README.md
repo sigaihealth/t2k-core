@@ -98,6 +98,18 @@ challenger against a disjoint 20-episode holdout. Both policies have logged
 action support; the evaluator computes the result rather than accepting caller
 supplied metrics.
 
+For the experimental typed graph-function runtime, run:
+
+```bash
+npm run example:harborlight:reasoning
+```
+
+This composes dispatch feasibility checks over a frozen synthetic graph, returns
+claim evidence and exclusions, and compares a repaired function with a deliberately
+faulty baseline on 15 labeled cases. See [Graph functions](docs/GRAPH_FUNCTIONS.md)
+for the API, interpretation, and limits. This is a source-checkout experiment;
+it is not included in the currently published 0.4.4 package.
+
 Run the synthetic public-benefits integration example:
 
 ```bash

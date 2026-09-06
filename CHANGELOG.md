@@ -6,6 +6,40 @@ rules in the versioned specification.
 
 ## [Unreleased]
 
+### Added
+
+- Experimental `@t2kai/core/reasoning` subpath with ontology-bound typed graph
+  programs, bounded read-only execution, claim-revision evidence, explicit
+  unresolved results, and deterministic execution receipts.
+- A pinned, runtime-computed labeled-task evaluator with disjoint case checks,
+  baseline comparison, hard-constraint failures, and reproducible failure records.
+- Provider-neutral automatic function authoring with bounded compile/test repair,
+  immutable signatures, development-only prompts, and per-attempt hashes.
+- Provider-adapter helpers for typed program schemas and ontology dependency
+  context, with included definitions mapped to the full pinned resolution.
+- Reviewed capability requirements that reject explicit unsupported operations
+  before provider dispatch, plus diagnostics for undeclared development identities.
+- Bounded structured repair diagnostics for answer, evidence, data, and compiler
+  failures, retaining complete development failure receipts in attempt records.
+- Shared signature/ontology preflight for development and final cases before model
+  calls or evaluation, explicit V2 supporting/considered/exclusion/per-row evidence
+  assertions, and bounded repair feedback with recorded request-budget failures.
+- An optional awaited completed-attempt checkpoint for generation hosts, with
+  immutable receipts and unclassified propagation of host checkpoint failures.
+- A Harborlight composition example covering 15 synthetic cases, including
+  missing, stale, unaccepted, and contradictory evidence and a deliberately faulty
+  capacity filter. Passing this evaluator does not authorize deployment or action.
+
+### Compatibility
+
+- This additive prototype leaves the normative ontology-pack schema, existing
+  policy replay and promotion rules, database layout, MCP tools, and published
+  package versions unchanged. Experimental function artifacts are separate from
+  descriptive `reasoningFunctions` in ontology packs.
+- Experimental V1 evaluation suites are rejected rather than silently upgrading
+  ambiguous `requiredClaimIds`. Review the intended evidence roles, freeze a V2
+  suite and hash, and rerun evaluation before relying on a new acceptance report.
+
 ## [0.4.4] - 2026-08-30
 
 ### Security
