@@ -4,7 +4,7 @@ import type { GraphGenerationContract, GraphGenerationRequest } from "./reasonin
 import type { GraphValueType } from "./reasoning-types.js";
 
 export const GRAPH_SYNTHESIS_CAPABILITIES = Object.freeze([
-  "lookup", "traverse", "filter", "project", "count", "sum", "min", "max", "mean",
+  "lookup", "traverse", "filter", "project", "count", "sum", "min", "max", "mean", "distinct",
 ] as const);
 
 /** Explicit reviewed declarations; prose is not treated as a capability proof. */
@@ -50,7 +50,10 @@ export function analyzeGraphGenerationCapabilities(input: Pick<GraphGenerationCo
     if (!(GRAPH_SYNTHESIS_CAPABILITIES as readonly string[]).includes(capability)) unsupported("requirements.capabilities." + index, capability);
   });
   if (requirements.ordering !== "canonical") unsupported("requirements.ordering", "ranked output; rows use canonical ordering");
-  if (requirements.multiplicity !== "preserve") unsupported("requirements.multiplicity", "distinct; duplicate paths retain multiplicity");
+  if (requirements.capabilities.includes("distinct") !== (requirements.multiplicity === "distinct")) {
+    diagnostics.push({ code: "contract_needs_review", category: "contract", action: "review_contract",
+      path: "requirements.multiplicity", message: "Entity distinctness requires both multiplicity 'distinct' and the 'distinct' capability; otherwise use multiplicity 'preserve'." });
+  }
   const resolution = compileOntologyPackSet(input.ontology);
   const definitions = new Set(resolution.definitions.map((item) => item.definitionKey));
   requirements.definitionRefs.forEach((reference, index) => {
@@ -155,6 +158,9 @@ export function graphGenerationProgramSchema(input: Pick<GraphGenerationRequest,
     source: stringSchema(), relation: enumSchema(relations), direction: enumSchema(["outgoing", "incoming"]), as: stringSchema() }));
   variants.push(strictObject({ id: stringSchema(), op: enumSchema(["filter"]), from: stringSchema(), all: { type: "array", minItems: 1, maxItems: 16,
     items: strictObject({ left: anyOperand, operator: enumSchema(["eq", "neq", "gt", "gte", "lt", "lte", "contains"]), right: anyOperand }) } }));
+  if (input.requirements?.multiplicity === "distinct" && input.requirements.capabilities.includes("distinct")) {
+    variants.push(strictObject({ id: stringSchema(), op: enumSchema(["distinct"]), from: stringSchema(), binding: stringSchema() }));
+  }
   const outputFields = input.template.output.kind === "rows" ? input.template.output.fields : { value: "number" as const };
   for (const type of new Set(Object.values(outputFields))) definitions["operand_" + type] = operand([type]);
   variants.push(strictObject({ id: stringSchema(), op: enumSchema(["project"]), from: stringSchema(),
@@ -184,6 +190,17 @@ export function graphGenerationIdentityDiagnostics(program: unknown, input: Pick
   }
   visit(program, "program");
   return diagnostics;
+}
+
+/** Presence is a necessary condition only; reviewed cases still establish the selected entity and placement. */
+export function graphGenerationMultiplicityDiagnostics(program: unknown, input: Pick<GraphGenerationContract, "requirements">): GraphSynthesisDiagnostic[] {
+  const steps = (program as { steps?: Array<{ op?: string }> })?.steps;
+  const usesDistinct = Array.isArray(steps) && steps.some((step) => step?.op === "distinct");
+  // Legacy contracts preserve paths by default, even when a custom provider bypasses the opt-in schema.
+  if (usesDistinct === (input.requirements?.multiplicity === "distinct")) return [];
+  return [{ code: "multiplicity_mismatch", category: "contract", action: "repair_program", path: "program.steps",
+    message: usesDistinct ? "The reviewed contract preserves path multiplicity; remove the distinct step." :
+      "The reviewed contract requires entity distinctness; add a distinct step on the intended entity binding before projection or aggregation." }];
 }
 
 /** Bound entire diagnostic entries as JSON, retaining counts even when samples are omitted. */

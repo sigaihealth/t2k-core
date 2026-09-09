@@ -29,7 +29,7 @@ subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
 and persisted reconciliation-review APIs remain available in this
-`@t2kai/core@0.5.0` stable release.
+`@t2kai/core@0.6.0` stable release.
 
 ## Experimental graph reasoning
 
@@ -51,6 +51,14 @@ code, fetch sources, call models, or authorize actions. Missing, stale or
 conflicting evidence returns `needs_review`; even completed results carry
 `authorization: "not_authorized"`.
 
+Core 0.6.0 adds an experimental `distinct` operator for
+counting or summing each exact entity id once across multiple paths. It retains
+only the selected entity binding, unions all path evidence, and preserves
+unresolved alternate paths as `needs_review`. Core 0.5.0 does not include
+this extension; hosts must inspect `GRAPH_SYNTHESIS_CAPABILITIES` and validate the
+installed executable build before using it. Distinct generation requires an
+explicit compatible capability and multiplicity declaration.
+
 `generateGraphFunction` accepts a host-supplied provider and repairs programs
 against development cases within a bounded attempt budget. A separate trusted
 harness preflights and freezes final V2 evaluation suites. It must keep final
@@ -70,7 +78,7 @@ and independently authorize activation. A package migration can change the build
 identity even when a program's JSON is unchanged.
 
 See the complete [graph-function API, examples and bounds](https://github.com/sigaihealth/t2k-core/blob/main/docs/GRAPH_FUNCTIONS.md).
-The graph reasoning subpath remains experimental through the stable 0.5 release;
+The graph reasoning subpath remains experimental through the stable 0.6 release;
 the normative ontology schema and existing lifecycle interfaces are unchanged.
 
 ## Compile Packs Locally

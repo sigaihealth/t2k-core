@@ -330,6 +330,37 @@ export function executeGraphFunction(input: {
         });
         else push(rows, row);
       }
+    } else if (step.op === "distinct") {
+      const groups = new Map<string, { row: Row; issues: Map<string, GraphIssue> }>();
+      for (const original of source) {
+        tick();
+        const entityId = original.bindings[step.binding];
+        let group = groups.get(entityId);
+        if (!group) {
+          const row: Row = { bindings: { [step.binding]: entityId }, values: {}, issues: [], claimIds: new Set() };
+          push(rows, row);
+          group = { row, issues: new Map() };
+          groups.set(entityId, group);
+        }
+        // Account for every merged item, including duplicates, so repeated paths cannot evade work limits.
+        for (const claimId of original.claimIds) {
+          tick();
+          group.row.claimIds.add(claimId);
+          stepClaims.add(claimId);
+        }
+        for (const issue of original.issues) {
+          tick();
+          group.issues.set(canonicalJson(issue), issue);
+        }
+      }
+      for (const group of groups.values()) {
+        // Charge a deterministic sorting allowance; host-engine comparison counts are not replay semantics.
+        tick(group.issues.size * Math.ceil(Math.log2(Math.max(1, group.issues.size))));
+        group.row.issues = [...group.issues.entries()]
+          .sort(([a], [b]) => compareCanonicalStrings(a, b)).map(([, issue]) => issue);
+      }
+      tick(rows.length * Math.ceil(Math.log2(Math.max(1, rows.length))));
+      rows.sort((a, b) => compareCanonicalStrings(a.bindings[step.binding], b.bindings[step.binding]));
     } else if (step.op === "project") {
       for (const original of source) {
         tick();

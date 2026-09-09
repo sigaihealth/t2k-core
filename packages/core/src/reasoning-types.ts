@@ -20,6 +20,8 @@ export type GraphStep =
   | { id: string; op: "traverse"; from: string; source: string; relation: string;
       direction: "outgoing" | "incoming"; as: string }
   | { id: string; op: "filter"; from: string; all: GraphCondition[] }
+  /** Collapse paths by this entity id, retaining only its binding and all path evidence/issues. */
+  | { id: string; op: "distinct"; from: string; binding: string }
   | { id: string; op: "project"; from: string; fields: Record<string, GraphOperand> }
   | { id: string; op: "aggregate"; from: string;
       operation: "count" | "sum" | "min" | "max" | "mean"; field?: string };
