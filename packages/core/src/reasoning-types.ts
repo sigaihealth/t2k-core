@@ -159,6 +159,8 @@ export interface GraphEvaluationCase extends GraphEvaluationInputCase {
       supportingClaimIds: string[];
       /** Claims inspected during execution, including unresolved, stale, or excluded claims. */
       consideredClaimIds: string[];
+      /** Opt in per role to equality of claim-id sets; omitted roles retain required-subset matching. */
+      claimSetMatching?: { supporting?: "exact"; considered?: "exact" };
       /** Each assertion must match one exclusion; entity ids avoid coupling labels to program aliases. */
       exclusions: Array<{ entityIds: string[]; claimIds: string[] }>;
       /** Each assertion must match one derivation for this complete expected output row. */

@@ -229,8 +229,8 @@ V2 replaces ambiguous `requiredClaimIds` with explicit evidence roles:
 }
 ```
 
-All four arrays are required and assert subsets, so an empty array means no
-assertion for that role. Supporting claims must support the completed answer;
+All four arrays are required and, by default, assert subsets, so an empty array
+means no assertion for that role. Supporting claims must support the completed answer;
 merely inspecting a claim or using it to exclude another row does not qualify.
 Considered claims may include stale, disputed, or proposed evidence, including
 when `status` is `needs_review` and `value` is `null`. Unresolved results cannot
@@ -238,6 +238,61 @@ assert answer support or returned-row evidence. Each row assertion must match on
 complete expected output row and one derivation; evidence cannot be pooled across
 rows. Each exclusion assertion must match one exclusion, using entity identifiers
 instead of program-selected aliases or step names.
+
+### Exact evidence claim sets (additive extension)
+
+An evaluation case can explicitly require equality of the supporting claim-id
+set, the considered claim-id set, or both:
+
+```json
+{
+  "supportingClaimIds": ["crew-a.available"],
+  "consideredClaimIds": ["crew-a.available", "crew-b.available"],
+  "claimSetMatching": { "supporting": "exact", "considered": "exact" },
+  "exclusions": [{ "entityIds": ["crew-b"], "claimIds": ["crew-b.available"] }],
+  "rows": [{ "row": { "crewId": "crew-a" }, "claimIds": ["crew-a.available"] }]
+}
+```
+
+`claimSetMatching` is optional. If supplied, it must contain at least one of
+`supporting` and `considered`, and every supplied value must be `"exact"`.
+Each omitted role retains required-subset behavior. Exact matching compares
+unordered sets of exact claim ids; duplicate expected ids are invalid. Both
+missing and extra actual claim ids fail that role's assertion. An exact empty
+array requires an empty actual set, including when the result is unresolved.
+
+The considered set is every claim in `result.evidence`, including claims that
+also support the answer, establish exclusions, or carry unresolved evidence.
+It is not only the claims outside the supporting set. The supporting set is
+`result.supportingClaimIds`. Row and exclusion assertions retain their existing
+required-subset semantics; this extension does not assert exact derivation or
+exclusion counts, trace contents, or issue codes.
+
+Preflight rejects contradictory labels before any provider call or execution.
+An exact supporting set must contain all required row-support claims. An exact
+considered set must contain all required supporting, row and exclusion claims.
+Existing checks still require supporting claims to be current and accepted,
+and unresolved results cannot claim answer support. Structurally consistent
+labels still require independent review.
+
+The matching declaration is part of normalized suite and generation-contract
+hashes. Adding or removing exact matching requires a newly reviewed, pinned
+contract; never reinterpret an existing evaluation receipt. Suites without the
+field keep their normalized hashes, result semantics and generation requests.
+This is an additive opt-in extension of `t2k.graph-evaluation.v2`; older runtimes
+reject the unknown field. Hosts can detect support through exported
+`GRAPH_EVALUATION_CLAIM_SET_MATCHING`, whose roles are `supporting` and
+`considered`, before accepting an exact contract. A deployment still binds and
+validates the new executable build; the capability advertisement is not an
+activation authorization.
+
+Development evaluation preserves exact labels through repairs and reports
+separate missing/extra claim counts with bounded samples. Call
+`graphGenerationInstructions(requirements, trainingCases)` to preflight the
+same instruction bytes as generation. The exact-evidence instructions are
+appended only when a development case opts in. Final labels remain outside
+model requests, and choosing exact matching after seeing final outcomes does
+not create a fresh independent final suite.
 
 The evaluator rejects V1 suites and legacy fields, including inside a V2 suite.
 Migration requires a reviewer to assign each old evidence assertion an explicit

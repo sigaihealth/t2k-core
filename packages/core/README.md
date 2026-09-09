@@ -70,6 +70,13 @@ suites require a reviewed migration to `t2k.graph-evaluation.v2`: assign explici
 supporting, considered, exclusion and per-row evidence roles, freeze a new hash,
 and rerun evaluation. Legacy evidence assertions are rejected, never inferred.
 
+The additive `expected.evidence.claimSetMatching` extension opts `supporting`
+and/or `considered` into `"exact"` claim-id set matching. Omitted roles remain
+required subsets; considered means all inspected claims, including supporting
+claims. Hosts can detect supported roles with
+`GRAPH_EVALUATION_CLAIM_SET_MATCHING`. See the [evaluation contract](../../docs/GRAPH_FUNCTIONS.md#exact-evidence-claim-sets-additive-extension)
+for contradictory-label preflight, bounded repair diagnostics and compatibility.
+
 The package includes `package.json.t2kReasoningBuild` with format
 `t2k.reasoning-build.v1`, an executable build hash and a file-digest manifest.
 Hosts can bind acceptance evidence to those exact executable bytes. This is

@@ -85,10 +85,18 @@ export const GRAPH_GENERATION_DISTINCT_INSTRUCTIONS = [
 ].join("\n");
 
 /** Let hosts preflight the same instruction bytes that candidate generation will dispatch. */
-export function graphGenerationInstructions(requirements?: GraphGenerationRequirements): string {
-  return requirements?.multiplicity === "distinct" && requirements.capabilities.includes("distinct")
+export function graphGenerationInstructions(requirements?: GraphGenerationRequirements, trainingCases?: readonly GraphEvaluationCase[]): string {
+  const instructions = requirements?.multiplicity === "distinct" && requirements.capabilities.includes("distinct")
     ? GRAPH_GENERATION_INSTRUCTIONS + "\n" + GRAPH_GENERATION_DISTINCT_INSTRUCTIONS : GRAPH_GENERATION_INSTRUCTIONS;
+  return trainingCases?.some((item) => item.expected.evidence.claimSetMatching)
+    ? instructions + "\n" + GRAPH_GENERATION_EXACT_EVIDENCE_INSTRUCTIONS : instructions;
 }
+
+export const GRAPH_GENERATION_EXACT_EVIDENCE_INSTRUCTIONS = [
+  "Development evidence.claimSetMatching opts supporting and/or considered into exact claim-id set equality. Each omitted role remains a required subset; rows and exclusions remain required assertions.",
+  "Exact supporting compares all claims supporting the completed answer. Exact considered compares all inspected result evidence, including supporting, excluded and unresolved claims. An exact empty list requires an empty actual set.",
+  "Use missing and extra evidence diagnostics to repair the program without changing the reviewed evidence labels or matching modes.",
+].join("\n");
 
 /** Normalize development inputs only. Final evaluation cases are deliberately absent. */
 export function prepareGraphGenerationContract(value: unknown): GraphGenerationContract {
@@ -165,7 +173,7 @@ export async function generateGraphFunction(
     let request: Readonly<GraphGenerationRequest> | null = null;
     try {
       const data = reasoningData({
-        attempt, instructions: graphGenerationInstructions(input.requirements), task: input.task,
+        attempt, instructions: graphGenerationInstructions(input.requirements, input.trainingCases), task: input.task,
         ontology: input.ontology, template: input.template, trainingCases: input.trainingCases,
         previousProgram, feedback,
         ...(input.requirements ? { requirements: input.requirements } : {}),

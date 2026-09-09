@@ -11,6 +11,9 @@ import type {
 } from "./reasoning-types.js";
 import type { GraphSynthesisDiagnostic } from "./reasoning-synthesis.js";
 
+/** Optional exact claim-set roles supported by this evaluator; absent roles remain required subsets. */
+export const GRAPH_EVALUATION_CLAIM_SET_MATCHING = Object.freeze(["supporting", "considered"] as const);
+
 function valueRows(value: any) {
   array(value, 2_000, "Expected rows");
   for (const row of value) {
@@ -81,7 +84,13 @@ export function normalizeGraphEvaluationSuite(value: unknown): GraphEvaluationSu
           requireCondition(Number.isFinite(item.expected.value), "invalid_contract", "Expected scalar must be finite.");
         } else valueRows(item.expected.value);
         const evidence = item.expected.evidence;
-        object(evidence, ["supportingClaimIds", "consideredClaimIds", "exclusions", "rows"]);
+        object(evidence, ["supportingClaimIds", "consideredClaimIds", "exclusions", "rows"], ["claimSetMatching"]);
+        if (evidence.claimSetMatching !== undefined) {
+          object(evidence.claimSetMatching, [], [...GRAPH_EVALUATION_CLAIM_SET_MATCHING], "Claim-set matching");
+          requireCondition(Object.keys(evidence.claimSetMatching).length > 0 &&
+            Object.values(evidence.claimSetMatching).every((mode) => mode === "exact"),
+          "invalid_contract", "Claim-set matching must opt in at least one known role with mode exact.");
+        }
         uniqueIds(evidence.supportingClaimIds, "Supporting evidence ids");
         uniqueIds(evidence.consideredClaimIds, "Considered evidence ids");
         array(evidence.exclusions, 100, "Exclusion evidence assertions");
@@ -103,6 +112,18 @@ export function normalizeGraphEvaluationSuite(value: unknown): GraphEvaluationSu
         }
         evidence.exclusions.sort((a: any, b: any) => compareCanonicalStrings(canonicalJson(a), canonicalJson(b)));
         evidence.rows.sort((a: any, b: any) => compareCanonicalStrings(canonicalJson(a), canonicalJson(b)));
+        if (evidence.claimSetMatching?.supporting === "exact") {
+          requireCondition(evidence.rows.every((assertion: { claimIds: string[] }) =>
+            assertion.claimIds.every((id) => evidence.supportingClaimIds.includes(id))),
+          "invalid_contract", "Exact supporting claims must include every required returned-row claim.");
+        }
+        if (evidence.claimSetMatching?.considered === "exact") {
+          const required = [...evidence.supportingClaimIds,
+            ...evidence.rows.flatMap((assertion: { claimIds: string[] }) => assertion.claimIds),
+            ...evidence.exclusions.flatMap((assertion: { claimIds: string[] }) => assertion.claimIds)];
+          requireCondition(required.every((id) => evidence.consideredClaimIds.includes(id)),
+            "invalid_contract", "Exact considered claims must include every required supporting, returned-row and exclusion claim.");
+        }
         valueRows(item.forbiddenRows);
         requireCondition(item.forbiddenRows.every((row: GraphRow) => Object.keys(row).length > 0),
           "invalid_contract", "A forbidden row must name at least one field.");
@@ -198,6 +219,14 @@ export function computeGraphEvaluationSuiteHash(suite: unknown) {
   return semanticHash(normalizeGraphEvaluationSuite(suite));
 }
 
+function claimSetDifference(expected: string[], actual: string[]) {
+  const expectedSet = new Set(expected), actualSet = new Set(actual);
+  return {
+    missing: [...expectedSet].filter((id) => !actualSet.has(id)).sort(),
+    extra: [...actualSet].filter((id) => !expectedSet.has(id)).sort(),
+  };
+}
+
 function developmentDiagnostics(item: GraphEvaluationCase, result: GraphFunctionResult | null): GraphSynthesisDiagnostic[] {
   if (!result) return [{ code: "execution_failed", category: "data", action: "review_contract", path: item.caseId,
     message: "Execution failed before producing a receipt; inspect the recorded execution error." }];
@@ -221,9 +250,15 @@ function developmentDiagnostics(item: GraphEvaluationCase, result: GraphFunction
   }
   const evidence = item.expected.evidence;
   const missingSupporting = evidence.supportingClaimIds.filter((id) => !result.supportingClaimIds.includes(id));
-  if (missingSupporting.length) add("supporting_evidence_mismatch", "evidence", "repair_program", "Required answer-supporting claims are missing.", { missing: sample(missingSupporting) });
+  if (evidence.claimSetMatching?.supporting === "exact") {
+    const { missing, extra } = claimSetDifference(evidence.supportingClaimIds, result.supportingClaimIds);
+    if (missing.length || extra.length) add("supporting_evidence_mismatch", "evidence", "repair_program", "Answer-supporting claims differ from the exact reviewed set.", { missing: sample(missing), extra: sample(extra) });
+  } else if (missingSupporting.length) add("supporting_evidence_mismatch", "evidence", "repair_program", "Required answer-supporting claims are missing.", { missing: sample(missingSupporting) });
   const missingConsidered = evidence.consideredClaimIds.filter((id) => !result.evidence.some((claim) => claim.claimId === id));
-  if (missingConsidered.length) add("considered_evidence_mismatch", "evidence", "repair_program", "Required considered claims were not inspected.", { missing: sample(missingConsidered) });
+  if (evidence.claimSetMatching?.considered === "exact") {
+    const { missing, extra } = claimSetDifference(evidence.consideredClaimIds, result.evidence.map((claim) => claim.claimId));
+    if (missing.length || extra.length) add("considered_evidence_mismatch", "evidence", "repair_program", "Considered claims differ from the exact reviewed set.", { missing: sample(missing), extra: sample(extra) });
+  } else if (missingConsidered.length) add("considered_evidence_mismatch", "evidence", "repair_program", "Required considered claims were not inspected.", { missing: sample(missingConsidered) });
   const missingExclusions = evidence.exclusions.filter((assertion) => !result.exclusions.some((exclusion) =>
     assertion.entityIds.every((id) => Object.values(exclusion.bindings).includes(id)) && assertion.claimIds.every((id) => exclusion.claimIds.includes(id))));
   if (missingExclusions.length) add("exclusion_evidence_mismatch", "evidence", "repair_program", "Required exclusion evidence is missing.", { missing: sample(missingExclusions) });
@@ -264,6 +299,12 @@ function score(compiled: CompiledGraphFunction, suite: GraphEvaluationSuite, inc
         reasons.push("Required supporting evidence did not support the completed answer.");
       if (!evidence.consideredClaimIds.every((id) => result!.evidence.some((entry) => entry.claimId === id)))
         reasons.push("Required considered evidence was not inspected by execution.");
+      if (evidence.claimSetMatching?.supporting === "exact" &&
+        claimSetDifference(evidence.supportingClaimIds, result.supportingClaimIds).extra.length)
+        reasons.push("Additional supporting evidence is outside the exact reviewed claim set.");
+      if (evidence.claimSetMatching?.considered === "exact" &&
+        claimSetDifference(evidence.consideredClaimIds, result.evidence.map((entry) => entry.claimId)).extra.length)
+        reasons.push("Additional considered evidence is outside the exact reviewed claim set.");
       if (!evidence.exclusions.every((assertion) => result!.exclusions.some((exclusion) =>
         assertion.entityIds.every((id) => Object.values(exclusion.bindings).includes(id)) &&
         assertion.claimIds.every((id) => exclusion.claimIds.includes(id)))))
