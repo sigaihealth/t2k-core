@@ -4,7 +4,7 @@ import { evaluateGraphFunction, computeGraphEvaluationSuiteHash, preflightGraphE
 import { deepFreeze, GraphFunctionError, integer, object, reasoningData, requireCondition, textValue } from "./reasoning-input.js";
 import type { GraphEvaluationCase, GraphEvaluationScore, GraphFunctionDefinition, GraphFunctionTemplate } from "./reasoning-types.js";
 import { analyzeGraphGenerationCapabilities, boundedGraphSynthesisDiagnostics, graphGenerationIdentityDiagnostics,
-  normalizeGraphGenerationRequirements, type GraphGenerationRequirements, type GraphSynthesisDiagnostic } from "./reasoning-synthesis.js";
+  graphGenerationMultiplicityDiagnostics, normalizeGraphGenerationRequirements, type GraphGenerationRequirements, type GraphSynthesisDiagnostic } from "./reasoning-synthesis.js";
 
 export type { GraphFunctionTemplate } from "./reasoning-types.js";
 export const GRAPH_GENERATION_LIMITS = Object.freeze({
@@ -73,6 +73,22 @@ export const GRAPH_GENERATION_INSTRUCTIONS = [
   "Use all task constraints; do not memorize training entity identifiers or output rows. Missing evidence remains unknown.",
   "Feedback is from compilation and development cases only. Passing development cases does not authorize activation.",
 ].join("\n");
+
+/** Opt-in additions preserve existing generation requests and journal hashes. */
+export const GRAPH_GENERATION_DISTINCT_INSTRUCTIONS = [
+  "distinct: {id,op:'distinct',from,binding}. Use only when reviewed requirements declare multiplicity 'distinct' and capability 'distinct'.",
+  "Distinct accepts entity bindings before projection, groups by the selected exact graph entity id, and retains ONLY that binding; all other aliases are unavailable afterward.",
+  "Distinct unions supporting evidence from every incoming path and conservatively preserves all unresolved issues. A clean path cannot erase an uncertain alternate path.",
+  "Apply all constraints involving other aliases before distinct. To sum capacity once per crew: filter paths, distinct the crew binding, project its numeric capacity as value, then sum value.",
+  "Distinct never deduplicates numeric values, arbitrary rows, or identity aliases. Different entity ids with equal capacities both contribute. Count and sum of an empty distinct collection are zero.",
+  "A contract requiring distinct must include a distinct step on the intended binding; a contract preserving multiplicity must not use distinct.",
+].join("\n");
+
+/** Let hosts preflight the same instruction bytes that candidate generation will dispatch. */
+export function graphGenerationInstructions(requirements?: GraphGenerationRequirements): string {
+  return requirements?.multiplicity === "distinct" && requirements.capabilities.includes("distinct")
+    ? GRAPH_GENERATION_INSTRUCTIONS + "\n" + GRAPH_GENERATION_DISTINCT_INSTRUCTIONS : GRAPH_GENERATION_INSTRUCTIONS;
+}
 
 /** Normalize development inputs only. Final evaluation cases are deliberately absent. */
 export function prepareGraphGenerationContract(value: unknown): GraphGenerationContract {
@@ -149,7 +165,7 @@ export async function generateGraphFunction(
     let request: Readonly<GraphGenerationRequest> | null = null;
     try {
       const data = reasoningData({
-        attempt, instructions: GRAPH_GENERATION_INSTRUCTIONS, task: input.task,
+        attempt, instructions: graphGenerationInstructions(input.requirements), task: input.task,
         ontology: input.ontology, template: input.template, trainingCases: input.trainingCases,
         previousProgram, feedback,
         ...(input.requirements ? { requirements: input.requirements } : {}),
@@ -197,12 +213,12 @@ export async function generateGraphFunction(
       record.status = evaluation.status === "passed" ? "ready" : "training_failed";
       record.feedback = boundedFeedback(evaluation.candidate.failures.map((item) =>
         item.caseId + ": " + item.reasons.join(" ") + " " + canonicalJson(item.issues)));
-      const identityDiagnostics = graphGenerationIdentityDiagnostics(program, input);
-      const entries: GraphSynthesisDiagnostic[] = [...evaluation.candidate.failures.flatMap((item) => item.diagnostics ?? []), ...identityDiagnostics];
+      const contractDiagnostics = [...graphGenerationIdentityDiagnostics(program, input), ...graphGenerationMultiplicityDiagnostics(program, input)];
+      const entries: GraphSynthesisDiagnostic[] = [...evaluation.candidate.failures.flatMap((item) => item.diagnostics ?? []), ...contractDiagnostics];
       if (entries.length) record.diagnostics = boundedGraphSynthesisDiagnostics(entries);
-      if (identityDiagnostics.length) {
+      if (contractDiagnostics.length) {
         record.status = "training_failed";
-        record.feedback = boundedFeedback([...record.feedback, ...identityDiagnostics.map((item) => item.code + ": " + item.path + ": " + item.message)]);
+        record.feedback = boundedFeedback([...record.feedback, ...contractDiagnostics.map((item) => item.code + ": " + item.path + ": " + item.message)]);
       }
       if (record.status === "ready") {
         definition = compiled.definition as GraphFunctionDefinition;

@@ -217,6 +217,13 @@ export function compileGraphFunction(input: {
           }
         }
         state = previous;
+      } else if (step.op === "distinct") {
+        object(step, ["id", "op", "from", "binding"]);
+        identifier(step.binding, "Distinct binding");
+        requireCondition(previous.kind === "bindings", "type_mismatch", "Distinct operates on entity bindings before projection.");
+        requireCondition(Object.hasOwn(previous.bindings, step.binding), "unknown_binding", "Unknown distinct entity binding: " + step.binding);
+        // Other aliases identify paths, not the selected entity; keeping one would invent a representative.
+        state = { kind: "bindings", bindings: { [step.binding]: previous.bindings[step.binding] }, fields: {} };
       } else if (step.op === "project") {
         object(step, ["id", "op", "from", "fields"]);
         requireCondition(previous.kind === "bindings" && step.fields && typeof step.fields === "object" &&

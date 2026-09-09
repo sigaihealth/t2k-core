@@ -4,7 +4,26 @@ All notable changes to the public T2K standard and packages will be documented
 here. The project follows Semantic Versioning for packages and the compatibility
 rules in the versioned specification.
 
-## [Unreleased]
+## [0.6.0] - 2026-09-09
+
+### Added
+
+- Experimental entity `distinct` operator for multi-path graph queries. It keeps
+  only the selected entity binding, merges every path's supporting evidence,
+  preserves unresolved issues, and charges bounded deterministic work. Different
+  entities with equal property values remain distinct.
+- Explicit distinct capability and multiplicity review, typed generation schema,
+  repair diagnostics, and a shared instruction helper for exact host preflight.
+
+### Compatibility
+
+- Existing programs retain their multiplicity, function hashes and result
+  semantics. The executable build identity changes, so adopting this extension
+  requires the host's normal validation and runtime revalidation. This operator
+  is introduced in Core 0.6.0; Core 0.5.0 remains unchanged.
+- MCP and scaffold source dependency pins track Core 0.6.0 to retain the
+  repository's exact-package smoke gates. Their published 0.4.0/0.5.0 releases
+  are unchanged; this release publishes Core only.
 
 ## [0.5.0] - 2026-09-06
 

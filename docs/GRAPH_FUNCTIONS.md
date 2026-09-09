@@ -21,8 +21,8 @@ dispatch outcomes.
 
 ## API
 
-The subpath is included in the stable 0.5.0 package.
-Install it with `npm install @t2kai/core@0.5.0`; it was not present
+The subpath was introduced in Core 0.5.0 and extended with entity distinctness
+in Core 0.6.0. Install it with `npm install @t2kai/core@0.6.0`; it was not present
 in 0.4.4. Its experimental status and capability limits remain explicit within
 the stable package. Existing ontology-pack and lifecycle interfaces are unchanged.
 
@@ -89,6 +89,7 @@ step, a freshness bound, and row/work limits.
 | `lookup` | Select typed entities, optionally by a declared identifier argument. |
 | `traverse` | Follow one declared relation in either direction, preserving entity bindings. Compose multiple steps for multiple hops. |
 | `filter` | Apply typed `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, or string-list `contains` conditions. All conditions must hold. |
+| `distinct` | Collapse paths by one existing entity binding's exact graph id; retain only that binding and union all path support and unresolved issues. |
 | `project` | Return named literal, argument, entity-id, or property values. |
 | `aggregate` | Compute count, sum, min, max, or mean over the resulting collection. |
 
@@ -100,10 +101,57 @@ booleans, and string lists. Unknown type names are errors, not inferred aliases.
 
 This first interpreter implements a chain of relational operations, not arbitrary
 programs or a general query language. Projection preserves multiplicity; aggregation
-counts rows, not distinct entities. Output rows use canonical deterministic order.
+counts its incoming rows. Output rows use canonical deterministic order.
 There is no implicit unit conversion or decimal arithmetic: numeric values use
 JavaScript finite numbers. The example's schedule values share one synthetic
 service day and minute unit.
+
+### Entity distinctness (Core 0.6.0)
+
+Core 0.6.0 adds `{id, op: "distinct", from, binding}`.
+Core 0.5.0 does not support this operator. Hosts must check the installed
+`GRAPH_SYNTHESIS_CAPABILITIES` and establish trust in the exact executable build
+before accepting functions that use it.
+
+`distinct` accepts an entity-binding collection, groups by the selected binding's
+exact graph entity id, and outputs that binding alone in canonical id order.
+The compiler drops every other alias because a path's job, route, or site cannot
+be chosen arbitrarily as representative of the entity. Apply any constraints
+that reference those aliases first. Projection and scalar inputs are rejected.
+Entity resolution remains the host's responsibility; case differences and aliases
+are not silently normalized.
+
+For example, if `eligible` contains the same crew through several site paths:
+
+```json
+[
+  { "id": "crews", "op": "distinct", "from": "eligible", "binding": "crew" },
+  { "id": "hours", "op": "project", "from": "crews", "fields": {
+    "value": { "binding": "crew", "property": "example:crew.available_hours" }
+  } },
+  { "id": "total", "op": "aggregate", "from": "hours", "operation": "sum", "field": "value" }
+]
+```
+
+The property reference must exist in the pinned ontology. Two different crews
+with equal hours both contribute; the same crew contributes once. Count can
+consume the distinct bindings directly, and empty count/sum remains zero.
+
+Every incoming path's supporting claim ids are unioned, and every unresolved
+issue is retained and deduplicated by its complete canonical issue record.
+A supported path cannot erase a disputed, stale, or unsupported alternate path.
+The distinct trace records the supporting claim union; unresolved considered
+claims remain in the execution evidence from earlier steps. Exclusions remain
+separate. This is conservative entity aggregation, not existential path selection,
+numeric-value deduplication, grouped aggregation, ranking, or function composition.
+
+The existing intermediate row budget applies before any paths are collapsed.
+Distinct work charges its step, each input row, every merged supporting claim and
+issue (including duplicates), and a deterministic `n * ceil(log2(max(1, n)))`
+allowance for each canonical sort, independent of the engine's sort algorithm. Exceeding a bound
+fails execution rather than returning a truncated answer. Existing programs
+without distinct retain their function and execution-result hashes; the changed
+executable build requires normal host revalidation.
 
 ## Snapshot and evidence semantics
 
@@ -268,11 +316,29 @@ The optional reviewed `requirements` object declares `capabilities`, `definition
 `identityConstants`, `ordering` (`canonical` or `ranked`), and `multiplicity`
 (`preserve` or `distinct`). All five fields are required when present. Supported
 capabilities are exported as `GRAPH_SYNTHESIS_CAPABILITIES`. Explicit requests for
-unsupported capabilities, ranking, or distinct fail with `unsupported_requirement`
+unsupported capabilities or ranking fail with `unsupported_requirement`
 before any provider call. Absent required ontology definitions produce
 `contract_needs_review`. `analyzeGraphGenerationCapabilities` returns those
 diagnostics without trying to infer requirements from task prose. An omitted
 requirements object preserves the existing contract hash.
+
+In Core 0.6.0, entity distinctness requires both
+`multiplicity: "distinct"` and `capabilities` containing `"distinct"`. Inconsistent
+declarations produce `contract_needs_review` before any provider call. The strict
+program schema offers distinct only for that explicit declaration. Generated
+programs must contain a distinct step when requested, and must not contain one
+when reviewed multiplicity is `preserve`; mismatches produce `multiplicity_mismatch`
+repair diagnostics even when development answers happen to pass. Presence alone
+does not prove the binding or step placement is correct; reviewed cases must
+establish that. Contracts that omit requirements preserve path multiplicity by
+default; a custom provider cannot bypass the explicit distinct opt-in by returning
+the operator directly. Existing programs that omit distinct retain their behavior.
+
+`graphGenerationInstructions(requirements?)` returns the exact instructions used
+by Core generation so hosts can preflight identical request bytes. Only distinct
+contracts receive `GRAPH_GENERATION_DISTINCT_INSTRUCTIONS` appended to the unchanged
+`GRAPH_GENERATION_INSTRUCTIONS`. Existing contracts keep the same generation
+instructions and schema, preserving their request and replay hashes.
 
 Provider adapters can use `graphGenerationProgramSchema(request)` to constrain
 the actual `{steps, return}` program. It derives allowed references, argument names,

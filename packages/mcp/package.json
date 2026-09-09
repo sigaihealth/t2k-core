@@ -55,7 +55,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@t2kai/core": "0.5.0",
+    "@t2kai/core": "0.6.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

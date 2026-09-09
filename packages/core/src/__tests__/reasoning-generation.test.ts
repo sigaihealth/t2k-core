@@ -34,7 +34,7 @@ describe("automatic graph function authoring", () => {
   const requirements = { capabilities: ["lookup", "filter", "project"], definitionRefs: [], identityConstants: [], ordering: "canonical", multiplicity: "preserve" };
   it.each([
     ["capabilities", ["group_by"], "unsupported_requirement"], ["ordering", "ranked", "unsupported_requirement"],
-    ["multiplicity", "distinct", "unsupported_requirement"], ["definitionRefs", ["missing:concept"], "contract_needs_review"],
+    ["multiplicity", "distinct", "contract_needs_review"], ["definitionRefs", ["missing:concept"], "contract_needs_review"],
   ])("diagnoses explicit unsupported %s before any provider call", async (field, value, code) => {
     const input: any = { ...contract, requirements: { ...requirements, [field]: value } };
     const diagnostics = analyzeGraphGenerationCapabilities(input);

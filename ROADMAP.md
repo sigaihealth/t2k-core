@@ -3,7 +3,9 @@
 This roadmap distinguishes implemented behavior from intended architecture.
 Dates are deliberately omitted until maintainers can defend them.
 
-## Unreleased graph-function experiment
+## Experimental graph functions
+
+The bounded foundation below shipped in Core 0.5.0 and remains experimental.
 
 - Separate, typed executable artifacts compiled against ontology definitions
 - Bounded read-only graph operators with evidence and explicit unknown results
@@ -11,6 +13,10 @@ Dates are deliberately omitted until maintainers can defend them.
 - Bounded automatic function authoring with compiler and development-test feedback
 - Typed program schemas, ontology dependency context, and explicit capability preflight
 - Structured answer/evidence diagnostics and awaited completed-attempt checkpoints
+- Shipped in Core 0.6.0: explicit entity `distinct` for
+  multi-path capacity queries, with merged evidence, conservative unknown
+  propagation, deterministic resource accounting and reviewed generation support.
+  Core 0.5.0 does not support this operator.
 - Still future work: schema/mapping-change evaluation, public MCP exposure,
   maintained views, cross-project reuse, and optional logical reasoning
 
