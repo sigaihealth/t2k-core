@@ -4,6 +4,32 @@ All notable changes to the public T2K standard and packages will be documented
 here. The project follows Semantic Versioning for packages and the compatibility
 rules in the versioned specification.
 
+## Unreleased
+
+### Added
+
+- Opt-in `resource_limit` evaluation labels for the exact typed `row_limit` or
+  `work_limit` error, with explicit expected/actual error records and development
+  repair diagnostics. Aborted runs have no fabricated result or evidence receipt.
+- Frozen `GRAPH_EVALUATION_RESOURCE_LIMIT_ERRORS` capability and conditional
+  `GRAPH_GENERATION_RESOURCE_LIMIT_INSTRUCTIONS`; reviewed labels and template
+  limits remain fixed through generation and repair.
+
+### Compatibility
+
+- This is an additive opt-in extension of `t2k.graph-evaluation.v2`. Normal cases
+  retain their canonical bytes, suite/report hashes, run records and generation
+  requests. Older evaluators reject resource-limit labels; adoption requires
+  newly reviewed, pinned contracts and normal executable-build revalidation.
+  Interpreter limits, runtime result statuses and artifact versions are unchanged.
+- The claim-indexing work predictor now applies only to executed evaluation
+  targets. Unexecuted training input declarations retain graph, type, argument,
+  input-budget and disjointness validation; indexing-heavy metadata previously
+  rejected by that predictor is now accepted. Actual normal-result targets still
+  reject a graph that exhausts the work budget during indexing, and only an
+  explicit `work_limit` label can bypass that prediction. Generation validates
+  its labelled development cases as execution targets.
+
 ## [0.7.0] - 2026-09-12
 
 ### Added

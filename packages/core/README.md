@@ -77,6 +77,16 @@ claims. Hosts can detect supported roles with
 `GRAPH_EVALUATION_CLAIM_SET_MATCHING`. See the [evaluation contract](../../docs/GRAPH_FUNCTIONS.md#exact-evidence-claim-sets-additive-extension)
 for contradictory-label preflight, bounded repair diagnostics and compatibility.
 
+An unreleased additive evaluation extension supports
+`expected.status: "resource_limit"` with `errorCode: "row_limit" | "work_limit"`.
+Only the exact typed runtime error passes; ordinary results and other errors
+fail. These labels require null value, empty evidence and forbidden-row lists,
+and no claim-set matching because an aborted execution has no result receipt.
+Hosts discover support through `GRAPH_EVALUATION_RESOURCE_LIMIT_ERRORS`.
+Normal case hashes and generation requests remain unchanged, and template limits
+cannot be overridden by a case or changed during repair. See the
+[resource-limit evaluation contract](../../docs/GRAPH_FUNCTIONS.md#expected-resource-limit-outcomes-unreleased-additive-extension).
+
 The package includes `package.json.t2kReasoningBuild` with format
 `t2k.reasoning-build.v1`, an executable build hash and a file-digest manifest.
 Hosts can bind acceptance evidence to those exact executable bytes. This is

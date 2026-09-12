@@ -307,6 +307,77 @@ emits failure records tied to input and result hashes. It rejects duplicate ids
 and exact normalized input copies across training and evaluation cases. This does
 not detect every paraphrase, correlated example, or undeclared training exposure.
 
+### Expected resource-limit outcomes (unreleased additive extension)
+
+The evaluator can label an intentional bounded abort without pretending the
+runtime returned an answer. A case may declare:
+
+```json
+{
+  "status": "resource_limit",
+  "errorCode": "row_limit",
+  "value": null,
+  "evidence": {
+    "supportingClaimIds": [],
+    "consideredClaimIds": [],
+    "exclusions": [],
+    "rows": []
+  }
+}
+```
+
+Only `row_limit` and `work_limit` are supported. `errorCode` is required on this
+branch and forbidden on `complete` and `needs_review` labels. Resource-limit
+labels require `value: null`, all four empty evidence lists, no `claimSetMatching`,
+and an empty case-level `forbiddenRows` list. An aborted execution has no
+`GraphFunctionResult`, evidence receipt, derivations, or result hash. Existing
+runtime results still have only `complete` and `needs_review` statuses.
+
+A resource-limit case passes only when execution throws a `GraphFunctionError`
+with the exact reviewed code. An ordinary return, a different limit, another
+typed error, or an untyped exception fails. Normal-result cases continue to fail
+on every execution error. Resource-limit runs and failures additionally record
+`expectedError` and `actualError`: actual is the typed error code, `null` for an
+ordinary returned result, or `execution_failed` for an untyped exception. A real
+returned result retains its real hash even though it mismatches the resource
+label; an aborted run has `resultHash: null`. Normal run and failure shapes are
+unchanged. Development mismatches include a `resource_limit_mismatch` diagnostic.
+An ordinary return or a different resource error can request program repair.
+Unrelated typed errors and untyped exceptions instead produce `execution_failed`
+with `review_contract`; generation stops after retaining that completed attempt,
+so repeated program repairs cannot conceal a data or runtime failure.
+
+Limits come from the compiled function template; cases cannot override them.
+Rows at the maximum are permitted, while attempting to add another row aborts.
+Work equal to `maxWork` is permitted, while charging the next excess unit aborts.
+Distinct cannot rescue a program that exhausts its intermediate row budget while
+collecting duplicate paths before distinct executes. Include ordinary outcomes
+alongside boundary controls: passing expected aborts does not establish that a
+program computes the required answers within its budget.
+
+Preflight still normalizes and validates every graph, ontology type, argument,
+JSON/input budget, and input fingerprint before execution or a provider call.
+An executed graph whose claim count is at least `maxWork` is rejected before
+execution unless that case explicitly expects `work_limit`. That exception does
+not waive malformed input or permit another expected error. The predictor applies
+only to `suite.cases`, which are actually executed. `suite.trainingCases` holds
+unexecuted, unlabelled input declarations for overlap detection; indexing-heavy
+metadata previously rejected by the predictor is now accepted, while all its
+other validation remains. Generation separately validates its labelled
+development cases as executed `suite.cases`, preserving the labelled-only waiver.
+
+Hosts detect support through the frozen `GRAPH_EVALUATION_RESOURCE_LIMIT_ERRORS`
+list before accepting these labels. The extension retains evaluation version v2;
+older evaluators reject it. New labels change normalized suite and generation
+contract hashes and require newly reviewed, pinned contracts. Existing sealed
+suites and receipts keep their original meaning. Existing normal-case canonical
+forms, hashes, reports and generation requests remain unchanged.
+
+`graphGenerationInstructions(requirements?, trainingCases?)` appends
+`GRAPH_GENERATION_RESOURCE_LIMIT_INSTRUCTIONS` only when a development case opts
+in. Generation and repair retain both the reviewed error labels and the immutable
+template limits. Final evaluation labels remain outside provider requests.
+
 Keep final tests outside candidate search. Hash pinning only protects that boundary
 when a trusted harness retains the expected hash; a party controlling both suite
 and pin can choose a different experiment. A passing finite suite is computed

@@ -86,16 +86,25 @@ export const GRAPH_GENERATION_DISTINCT_INSTRUCTIONS = [
 
 /** Let hosts preflight the same instruction bytes that candidate generation will dispatch. */
 export function graphGenerationInstructions(requirements?: GraphGenerationRequirements, trainingCases?: readonly GraphEvaluationCase[]): string {
-  const instructions = requirements?.multiplicity === "distinct" && requirements.capabilities.includes("distinct")
+  let instructions = requirements?.multiplicity === "distinct" && requirements.capabilities.includes("distinct")
     ? GRAPH_GENERATION_INSTRUCTIONS + "\n" + GRAPH_GENERATION_DISTINCT_INSTRUCTIONS : GRAPH_GENERATION_INSTRUCTIONS;
-  return trainingCases?.some((item) => item.expected.evidence.claimSetMatching)
+  instructions = trainingCases?.some((item) => item.expected.evidence.claimSetMatching)
     ? instructions + "\n" + GRAPH_GENERATION_EXACT_EVIDENCE_INSTRUCTIONS : instructions;
+  return trainingCases?.some((item) => item.expected.status === "resource_limit")
+    ? instructions + "\n" + GRAPH_GENERATION_RESOURCE_LIMIT_INSTRUCTIONS : instructions;
 }
 
 export const GRAPH_GENERATION_EXACT_EVIDENCE_INSTRUCTIONS = [
   "Development evidence.claimSetMatching opts supporting and/or considered into exact claim-id set equality. Each omitted role remains a required subset; rows and exclusions remain required assertions.",
   "Exact supporting compares all claims supporting the completed answer. Exact considered compares all inspected result evidence, including supporting, excluded and unresolved claims. An exact empty list requires an empty actual set.",
   "Use missing and extra evidence diagnostics to repair the program without changing the reviewed evidence labels or matching modes.",
+].join("\n");
+
+export const GRAPH_GENERATION_RESOURCE_LIMIT_INSTRUCTIONS = [
+  "A development case with expected.status 'resource_limit' must raise exactly its reviewed errorCode, 'row_limit' or 'work_limit'. An ordinary result, a different error, or an untyped exception fails that case.",
+  "Resource-limit cases have null value, empty evidence and forbidden-row lists, and no claim-set matching because aborted execution produces no result receipt. Normal cases still fail on every thrown error.",
+  "Preserve the immutable template limits and all reviewed labels during repair. Cases cannot override budgets. Distinct does not prevent row exhaustion while incoming paths are still being collected.",
+  "An unrelated execution or data error requires contract or runtime review; do not repeatedly repair the program or relabel the expected error to accept it.",
 ].join("\n");
 
 /** Normalize development inputs only. Final evaluation cases are deliberately absent. */
@@ -244,7 +253,8 @@ export async function generateGraphFunction(
     feedback = record.feedback;
     diagnostics = record.diagnostics;
     await checkpoint(record);
-    if (definition) break;
+    if (definition || record.training?.failures.some(failure => failure.expectedError !== undefined &&
+      failure.diagnostics?.some(entry => entry.action === "review_contract"))) break;
   }
   const result: Omit<GraphGenerationResult, "generationHash"> = {
     generationVersion: "t2k.graph-generation.v1",

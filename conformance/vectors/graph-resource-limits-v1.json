@@ -1,0 +1,66 @@
+{
+  "vectorType": "t2k.graph-resource-limit-conformance.v1",
+  "description": "Each vector compiles its own fixed lookup/count function. Cases never override that function's limits.",
+  "ontologyFixture": "examples/harborlight-reasoning/ontology-pack.json",
+  "program": {
+    "inputs": { "jobId": "string" },
+    "output": { "kind": "scalar", "valueType": "number" },
+    "maxAgeSeconds": 3600,
+    "steps": [
+      { "id": "members", "op": "lookup", "typeRef": "harborlight.reasoning:crew", "as": "member" },
+      { "id": "total", "op": "aggregate", "from": "members", "operation": "count" }
+    ],
+    "return": "total"
+  },
+  "emptyEvidence": { "supportingClaimIds": [], "consideredClaimIds": [], "exclusions": [], "rows": [] },
+  "cases": [
+    {
+      "name": "matching-row-limit",
+      "limits": { "maxRows": 1, "maxWork": 100 }, "members": 2, "claims": 0,
+      "expected": { "status": "resource_limit", "errorCode": "row_limit", "value": null },
+      "evaluationStatus": "passed", "actualError": "row_limit", "hasResult": false
+    },
+    {
+      "name": "matching-work-limit",
+      "limits": { "maxRows": 3, "maxWork": 4 }, "members": 2, "claims": 0,
+      "expected": { "status": "resource_limit", "errorCode": "work_limit", "value": null },
+      "evaluationStatus": "passed", "actualError": "work_limit", "hasResult": false
+    },
+    {
+      "name": "matching-indexing-work-limit",
+      "limits": { "maxRows": 3, "maxWork": 4 }, "members": 1, "claims": 4,
+      "expected": { "status": "resource_limit", "errorCode": "work_limit", "value": null },
+      "evaluationStatus": "passed", "actualError": "work_limit", "hasResult": false
+    },
+    {
+      "name": "ordinary-return-is-not-a-resource-error",
+      "limits": { "maxRows": 3, "maxWork": 4 }, "members": 1, "claims": 0,
+      "expected": { "status": "resource_limit", "errorCode": "row_limit", "value": null },
+      "evaluationStatus": "failed", "actualError": null, "hasResult": true
+    },
+    {
+      "name": "wrong-resource-error-is-rejected",
+      "limits": { "maxRows": 3, "maxWork": 4 }, "members": 2, "claims": 0,
+      "expected": { "status": "resource_limit", "errorCode": "row_limit", "value": null },
+      "evaluationStatus": "failed", "actualError": "work_limit", "hasResult": false
+    },
+    {
+      "name": "unlabelled-resource-error-still-fails",
+      "limits": { "maxRows": 1, "maxWork": 100 }, "members": 2, "claims": 0,
+      "expected": { "status": "complete", "value": 2 },
+      "evaluationStatus": "failed", "hasResult": false
+    },
+    {
+      "name": "unsupported-expected-error-is-invalid",
+      "limits": { "maxRows": 3, "maxWork": 100 }, "members": 1, "claims": 0,
+      "expected": { "status": "resource_limit", "errorCode": "invalid_graph", "value": null },
+      "preflightError": "invalid_contract"
+    },
+    {
+      "name": "normal-label-cannot-expect-an-error",
+      "limits": { "maxRows": 3, "maxWork": 100 }, "members": 1, "claims": 0,
+      "expected": { "status": "complete", "errorCode": "row_limit", "value": 1 },
+      "preflightError": "invalid_contract"
+    }
+  ]
+}
