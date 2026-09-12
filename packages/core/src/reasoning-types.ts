@@ -150,9 +150,10 @@ export interface GraphEvaluationInputCase {
   arguments: Record<string, GraphValue>;
 }
 
+export type GraphEvaluationResourceLimitError = "row_limit" | "work_limit";
+
 export interface GraphEvaluationCase extends GraphEvaluationInputCase {
   expected: {
-    status: GraphFunctionResult["status"];
     value: GraphRow[] | number | null;
     evidence: {
       /** Subset of claims supporting the completed answer, never merely considered claims. */
@@ -166,7 +167,11 @@ export interface GraphEvaluationCase extends GraphEvaluationInputCase {
       /** Each assertion must match one derivation for this complete expected output row. */
       rows: Array<{ row: GraphRow; claimIds: string[] }>;
     };
-  };
+  } & (
+    | { status: GraphFunctionResult["status"]; errorCode?: never }
+    /** An aborted execution has no result or evidence receipt. All evidence lists must be empty. */
+    | { status: "resource_limit"; errorCode: GraphEvaluationResourceLimitError; value: null }
+  );
   /** Each partial row describes a forbidden combination in a completed result. */
   forbiddenRows: GraphRow[];
 }
@@ -190,6 +195,10 @@ export interface GraphFailureCase {
   /** Opt-in development diagnostics; independent evaluation defaults retain their existing hashes. */
   diagnostics?: import("./reasoning-synthesis.js").GraphSynthesisDiagnostic[];
   result?: GraphFunctionResult | null;
+  /** Present only when the case explicitly expects a resource-limit error. */
+  expectedError?: GraphEvaluationResourceLimitError;
+  /** Null for an ordinary returned result; execution_failed for an untyped exception. */
+  actualError?: string | null;
 }
 
 export interface GraphEvaluationScore {
@@ -198,7 +207,9 @@ export interface GraphEvaluationScore {
   accuracy: number;
   hardConstraintViolations: number;
   failures: GraphFailureCase[];
-  runs: Array<{ caseId: string; passed: boolean; resultHash: string | null }>;
+  runs: Array<{ caseId: string; passed: boolean; resultHash: string | null;
+    /** These fields are absent on normal-result cases, including unexpected execution errors. */
+    expectedError?: GraphEvaluationResourceLimitError; actualError?: string | null }>;
 }
 
 export interface GraphEvaluationResult {

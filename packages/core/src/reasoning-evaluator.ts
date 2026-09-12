@@ -13,6 +13,8 @@ import type { GraphSynthesisDiagnostic } from "./reasoning-synthesis.js";
 
 /** Optional exact claim-set roles supported by this evaluator; absent roles remain required subsets. */
 export const GRAPH_EVALUATION_CLAIM_SET_MATCHING = Object.freeze(["supporting", "considered"] as const);
+/** Explicitly reviewable aborted outcomes; every other error remains a failed execution. */
+export const GRAPH_EVALUATION_RESOURCE_LIMIT_ERRORS = Object.freeze(["row_limit", "work_limit"] as const);
 
 function valueRows(value: any) {
   array(value, 2_000, "Expected rows");
@@ -75,14 +77,21 @@ export function normalizeGraphEvaluationSuite(value: unknown): GraphEvaluationSu
       requireCondition(!inputs.has(fingerprint), "overlapping_cases", "Duplicate case inputs cannot be relabeled as independent holdout evidence.");
       inputs.add(fingerprint);
       if (cohort === "evaluation") {
-        object(item.expected, ["status", "value", "evidence"]);
-        requireCondition(["complete", "needs_review"].includes(item.expected.status),
+        object(item.expected, ["status", "value", "evidence"], ["errorCode"]);
+        requireCondition(["complete", "needs_review", "resource_limit"].includes(item.expected.status),
           "invalid_contract", "Unsupported expected result status.");
+        if (item.expected.status === "resource_limit") {
+          requireCondition(GRAPH_EVALUATION_RESOURCE_LIMIT_ERRORS.includes(item.expected.errorCode),
+            "invalid_contract", "Resource-limit labels require errorCode row_limit or work_limit.");
+          requireCondition(item.expected.value === null, "invalid_contract", "Resource-limit expected values must be null.");
+        } else {
+          requireCondition(!Object.hasOwn(item.expected, "errorCode"), "invalid_contract", "Normal result labels cannot declare an errorCode.");
+        }
         if (item.expected.status === "needs_review") {
           requireCondition(item.expected.value === null, "invalid_contract", "Unresolved expected values must be null.");
-        } else if (typeof item.expected.value === "number") {
+        } else if (item.expected.status === "complete" && typeof item.expected.value === "number") {
           requireCondition(Number.isFinite(item.expected.value), "invalid_contract", "Expected scalar must be finite.");
-        } else valueRows(item.expected.value);
+        } else if (item.expected.status === "complete") valueRows(item.expected.value);
         const evidence = item.expected.evidence;
         object(evidence, ["supportingClaimIds", "consideredClaimIds", "exclusions", "rows"], ["claimSetMatching"]);
         if (evidence.claimSetMatching !== undefined) {
@@ -127,6 +136,12 @@ export function normalizeGraphEvaluationSuite(value: unknown): GraphEvaluationSu
         valueRows(item.forbiddenRows);
         requireCondition(item.forbiddenRows.every((row: GraphRow) => Object.keys(row).length > 0),
           "invalid_contract", "A forbidden row must name at least one field.");
+        if (item.expected.status === "resource_limit") {
+          requireCondition(!Object.hasOwn(evidence, "claimSetMatching") &&
+            [evidence.supportingClaimIds, evidence.consideredClaimIds, evidence.exclusions, evidence.rows, item.forbiddenRows]
+              .every((items) => items.length === 0),
+          "invalid_contract", "Resource-limit labels require empty evidence and forbidden rows, without claim-set matching; no receipt is produced.");
+        }
       }
     }
     cases.sort((a: any, b: any) => compareCanonicalStrings(a.caseId, b.caseId));
@@ -148,11 +163,15 @@ function validateSuiteAgainstSignature(suite: GraphEvaluationSuite, template: Gr
       "ontology_mismatch", "Every case must use the pinned function ontology.");
     validateGraphTypes(item.graph, plan);
     validateGraphArguments(item.arguments, template);
-    requireCondition(item.graph.claims.length < template.limits.maxWork, "invalid_contract",
-      "Case graph already exceeds the work budget before any function can execute.");
   }
   for (const item of suite.cases) {
     const { expected } = item;
+    // Training entries above are unexecuted input fingerprints. Generation validates its
+    // labelled development cases as suite.cases, so only an explicit work-limit label
+    // may bypass this prediction for an actual execution target.
+    requireCondition((expected.status === "resource_limit" && expected.errorCode === "work_limit") ||
+      item.graph.claims.length < template.limits.maxWork, "invalid_contract",
+    "Case graph already exceeds the work budget before any function can execute.");
     const evidence = expected.evidence;
     if (expected.status === "complete") {
       requireCondition(item.graph.coverage === "complete", "invalid_contract", "A partial graph cannot label a completed result.");
@@ -227,7 +246,18 @@ function claimSetDifference(expected: string[], actual: string[]) {
   };
 }
 
-function developmentDiagnostics(item: GraphEvaluationCase, result: GraphFunctionResult | null): GraphSynthesisDiagnostic[] {
+function developmentDiagnostics(item: GraphEvaluationCase, result: GraphFunctionResult | null, actualError: string | null = null): GraphSynthesisDiagnostic[] {
+  if (item.expected.status === "resource_limit") {
+    const repairable = actualError === null || GRAPH_EVALUATION_RESOURCE_LIMIT_ERRORS.some(code => code === actualError);
+    return [{
+      code: repairable ? "resource_limit_mismatch" : "execution_failed", category: repairable ? "answer" : "data",
+      action: repairable ? "repair_program" : "review_contract", path: item.caseId,
+      message: repairable
+        ? "Execution did not raise the reviewed resource-limit error. Repair the program without changing frozen limits or labels."
+        : "Execution failed outside the reviewed resource-limit outcomes. Review the contract or runtime before retrying.",
+      details: { expectedError: item.expected.errorCode, actualError, actualStatus: result?.status ?? null },
+    }];
+  }
   if (!result) return [{ code: "execution_failed", category: "data", action: "review_contract", path: item.caseId,
     message: "Execution failed before producing a receipt; inspect the recorded execution error." }];
   const entries: GraphSynthesisDiagnostic[] = [];
@@ -284,6 +314,7 @@ function score(compiled: CompiledGraphFunction, suite: GraphEvaluationSuite, inc
     const reasons: string[] = [];
     let result: GraphFunctionResult | null = null;
     let category: GraphFailureCase["category"] = "function";
+    let actualError: string | null = null;
     try {
       result = executeGraphFunction({
         compiled, graph: item.graph, arguments: item.arguments,
@@ -292,41 +323,52 @@ function score(compiled: CompiledGraphFunction, suite: GraphEvaluationSuite, inc
           expectedSnapshotHash: semanticHash(item.graph),
         },
       });
-      if (result.status !== item.expected.status) reasons.push("Result status does not match the labeled case.");
-      if (canonicalJson(result.value) !== canonicalJson(item.expected.value)) reasons.push("Computed value does not match the labeled case.");
-      const evidence = item.expected.evidence;
-      if (!evidence.supportingClaimIds.every((id) => result!.supportingClaimIds.includes(id)))
-        reasons.push("Required supporting evidence did not support the completed answer.");
-      if (!evidence.consideredClaimIds.every((id) => result!.evidence.some((entry) => entry.claimId === id)))
-        reasons.push("Required considered evidence was not inspected by execution.");
-      if (evidence.claimSetMatching?.supporting === "exact" &&
-        claimSetDifference(evidence.supportingClaimIds, result.supportingClaimIds).extra.length)
-        reasons.push("Additional supporting evidence is outside the exact reviewed claim set.");
-      if (evidence.claimSetMatching?.considered === "exact" &&
-        claimSetDifference(evidence.consideredClaimIds, result.evidence.map((entry) => entry.claimId)).extra.length)
-        reasons.push("Additional considered evidence is outside the exact reviewed claim set.");
-      if (!evidence.exclusions.every((assertion) => result!.exclusions.some((exclusion) =>
-        assertion.entityIds.every((id) => Object.values(exclusion.bindings).includes(id)) &&
-        assertion.claimIds.every((id) => exclusion.claimIds.includes(id)))))
-        reasons.push("Required exclusion evidence did not establish the designated exclusion.");
-      if (!evidence.rows.every((assertion) => result!.derivations.some((derivation) =>
-        derivation.rowHash === semanticHash(assertion.row) && assertion.claimIds.every((id) => derivation.claimIds.includes(id)))))
-        reasons.push("Required row evidence did not support its designated returned row.");
-      if (Array.isArray(result.value)) {
-        for (const row of result.value) {
-          if (item.forbiddenRows.some((forbidden) => Object.entries(forbidden)
-            .every(([field, value]) => Object.hasOwn(row, field) && canonicalJson(row[field]) === canonicalJson(value)))) {
-            hardConstraintViolations++;
-            reasons.push("A returned option violates a designated hard constraint.");
+      if (item.expected.status === "resource_limit") {
+        category = "execution";
+        reasons.push("Expected " + item.expected.errorCode + ", but execution returned " + result.status + ".");
+      } else {
+        if (result.status !== item.expected.status) reasons.push("Result status does not match the labeled case.");
+        if (canonicalJson(result.value) !== canonicalJson(item.expected.value)) reasons.push("Computed value does not match the labeled case.");
+        const evidence = item.expected.evidence;
+        if (!evidence.supportingClaimIds.every((id) => result!.supportingClaimIds.includes(id)))
+          reasons.push("Required supporting evidence did not support the completed answer.");
+        if (!evidence.consideredClaimIds.every((id) => result!.evidence.some((entry) => entry.claimId === id)))
+          reasons.push("Required considered evidence was not inspected by execution.");
+        if (evidence.claimSetMatching?.supporting === "exact" &&
+          claimSetDifference(evidence.supportingClaimIds, result.supportingClaimIds).extra.length)
+          reasons.push("Additional supporting evidence is outside the exact reviewed claim set.");
+        if (evidence.claimSetMatching?.considered === "exact" &&
+          claimSetDifference(evidence.consideredClaimIds, result.evidence.map((entry) => entry.claimId)).extra.length)
+          reasons.push("Additional considered evidence is outside the exact reviewed claim set.");
+        if (!evidence.exclusions.every((assertion) => result!.exclusions.some((exclusion) =>
+          assertion.entityIds.every((id) => Object.values(exclusion.bindings).includes(id)) &&
+          assertion.claimIds.every((id) => exclusion.claimIds.includes(id)))))
+          reasons.push("Required exclusion evidence did not establish the designated exclusion.");
+        if (!evidence.rows.every((assertion) => result!.derivations.some((derivation) =>
+          derivation.rowHash === semanticHash(assertion.row) && assertion.claimIds.every((id) => derivation.claimIds.includes(id)))))
+          reasons.push("Required row evidence did not support its designated returned row.");
+        if (Array.isArray(result.value)) {
+          for (const row of result.value) {
+            if (item.forbiddenRows.some((forbidden) => Object.entries(forbidden)
+              .every(([field, value]) => Object.hasOwn(row, field) && canonicalJson(row[field]) === canonicalJson(value)))) {
+              hardConstraintViolations++;
+              reasons.push("A returned option violates a designated hard constraint.");
+            }
           }
         }
+        if (result.issues.some((issue) => issue.code === "conflicting_evidence")) category = "conflict";
+        else if (result.issues.some((issue) => issue.code === "stale_evidence")) category = "freshness";
+        else if (result.issues.length > 0) category = "evidence";
       }
-      if (result.issues.some((issue) => issue.code === "conflicting_evidence")) category = "conflict";
-      else if (result.issues.some((issue) => issue.code === "stale_evidence")) category = "freshness";
-      else if (result.issues.length > 0) category = "evidence";
     } catch (error) {
       category = "execution";
-      reasons.push(error instanceof GraphFunctionError ? error.code + ": " + error.message : "Execution failed.");
+      actualError = error instanceof GraphFunctionError ? error.code : "execution_failed";
+      if (item.expected.status === "resource_limit") {
+        if (!(error instanceof GraphFunctionError) || error.code !== item.expected.errorCode) reasons.push(
+          error instanceof GraphFunctionError
+            ? "Expected " + item.expected.errorCode + ", but execution raised " + error.code + ": " + error.message
+            : "Expected " + item.expected.errorCode + ", but execution failed without a typed graph error.");
+      } else reasons.push(error instanceof GraphFunctionError ? error.code + ": " + error.message : "Execution failed.");
     }
     const passed = reasons.length === 0;
     if (passed) passedCases++;
@@ -334,11 +376,13 @@ function score(compiled: CompiledGraphFunction, suite: GraphEvaluationSuite, inc
       const failure = {
         caseId: item.caseId, category, reasons,
         resultHash: result?.resultHash ?? null, issues: result?.issues ?? [],
-        ...(includeDiagnostics ? { diagnostics: developmentDiagnostics(item, result), result } : {}),
+        ...(item.expected.status === "resource_limit" ? { expectedError: item.expected.errorCode, actualError } : {}),
+        ...(includeDiagnostics ? { diagnostics: developmentDiagnostics(item, result, actualError), result } : {}),
       };
       failures.push({ ...failure, failureHash: semanticHash({ ...failure, functionHash: compiled.functionHash, inputHash: caseFingerprint(item) }) });
     }
-    runs.push({ caseId: item.caseId, passed, resultHash: result?.resultHash ?? null });
+    runs.push({ caseId: item.caseId, passed, resultHash: result?.resultHash ?? null,
+      ...(item.expected.status === "resource_limit" ? { expectedError: item.expected.errorCode, actualError } : {}) });
   }
   return { passedCases, totalCases: suite.cases.length, accuracy: passedCases / suite.cases.length,
     hardConstraintViolations, failures, runs };

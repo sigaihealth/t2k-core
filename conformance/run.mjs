@@ -12,6 +12,7 @@ import {
   validateOntologyPackManifest,
 } from "../packages/core/dist/index.js";
 import { compileOntologyPackSet } from "../packages/core/dist/compiler.js";
+import { verifyGraphResourceLimitVectors } from "./graph-resource-limits.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -367,7 +368,8 @@ const packageSchema = await fs.readFile(
   "utf8"
 );
 assert.equal(packageSchema, canonicalSchema, "package and canonical schemas must match byte-for-byte");
+const resourceLimitVectors = await verifyGraphResourceLimitVectors();
 
 console.log(
-  `T2K conformance passed: ${validFiles.length} valid, ${invalidFiles.length} schema-invalid, ${compilerInvalidFiles.length} compiler-invalid, ${trustVectors.deploymentCompilation.length + trustVectors.replayEpisodeIdentity.length + trustVectors.rewardEvaluation.length + trustVectors.sourceBinding.cases.length + 1} language-neutral trust vectors, deterministic hashes and governed source execution verified.`
+  `T2K conformance passed: ${validFiles.length} valid, ${invalidFiles.length} schema-invalid, ${compilerInvalidFiles.length} compiler-invalid, ${trustVectors.deploymentCompilation.length + trustVectors.replayEpisodeIdentity.length + trustVectors.rewardEvaluation.length + trustVectors.sourceBinding.cases.length + 1} language-neutral trust vectors, ${resourceLimitVectors} graph resource-limit vectors, deterministic hashes and governed source execution verified.`
 );
