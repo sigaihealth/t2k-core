@@ -22,9 +22,10 @@ dispatch outcomes.
 ## API
 
 The subpath was introduced in Core 0.5.0 and extended with entity distinctness
-in Core 0.6.0. Install it with `npm install @t2kai/core@0.6.0`; it was not present
-in 0.4.4. Its experimental status and capability limits remain explicit within
-the stable package. Existing ontology-pack and lifecycle interfaces are unchanged.
+in Core 0.6.0 and opt-in exact evidence claim sets in Core 0.7.0. Install it with
+`npm install @t2kai/core@0.7.0`; it was not present in 0.4.4. Its experimental
+status and capability limits remain explicit within the stable package. Existing
+ontology-pack and lifecycle interfaces are unchanged.
 
 ```ts
 import { compileOntologyPackSet } from "@t2kai/core/compiler";
@@ -241,8 +242,8 @@ instead of program-selected aliases or step names.
 
 ### Exact evidence claim sets (additive extension)
 
-An evaluation case can explicitly require equality of the supporting claim-id
-set, the considered claim-id set, or both:
+Core 0.7.0 allows an evaluation case to explicitly require equality of the
+supporting claim-id set, the considered claim-id set, or both:
 
 ```json
 {
@@ -389,11 +390,13 @@ establish that. Contracts that omit requirements preserve path multiplicity by
 default; a custom provider cannot bypass the explicit distinct opt-in by returning
 the operator directly. Existing programs that omit distinct retain their behavior.
 
-`graphGenerationInstructions(requirements?)` returns the exact instructions used
-by Core generation so hosts can preflight identical request bytes. Only distinct
-contracts receive `GRAPH_GENERATION_DISTINCT_INSTRUCTIONS` appended to the unchanged
-`GRAPH_GENERATION_INSTRUCTIONS`. Existing contracts keep the same generation
-instructions and schema, preserving their request and replay hashes.
+`graphGenerationInstructions(requirements?, trainingCases?)` returns the exact
+instructions used by Core generation so hosts can preflight identical request
+bytes. Distinct contracts append `GRAPH_GENERATION_DISTINCT_INSTRUCTIONS` to the
+unchanged `GRAPH_GENERATION_INSTRUCTIONS`; development cases that opt into exact
+evidence matching additionally append `GRAPH_GENERATION_EXACT_EVIDENCE_INSTRUCTIONS`.
+Contracts that omit exact matching keep their prior generation instructions and
+schema, preserving their request and replay hashes.
 
 Provider adapters can use `graphGenerationProgramSchema(request)` to constrain
 the actual `{steps, return}` program. It derives allowed references, argument names,

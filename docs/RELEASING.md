@@ -64,13 +64,15 @@ Use complete prerelease versions in signed tags, for example
 `core-v0.5.0-rc.1`. A successful RC must leave existing `latest` tags unchanged.
 Record both `next` and `latest` with `npm view <package> dist-tags --json`.
 
-Core 0.6.0 is a Core-only release. Only `core-v0.6.0` is tagged and published.
-MCP and scaffold source pins track Core 0.6.0 to preserve the exact-Core package
-smoke gates, but their package versions and published artifacts remain unchanged.
+Core 0.7.0 is a Core-only release, as was Core 0.6.0. Only `core-v0.7.0` is
+tagged and published for this release. MCP and scaffold source pins track Core
+0.7.0 to preserve the exact-Core package smoke gates, but their package versions
+and published artifacts remain unchanged.
 Their next publication requires new package versions and the normal separate
 signed tags; do not republish the existing MCP 0.4.0 or create-t2k 0.5.0 versions.
-Use `npm install @t2kai/core@0.6.0` for the new distinct operator; the existing
-published MCP/scaffolder commands continue to resolve their original Core 0.5.0.
+Use `npm install @t2kai/core@0.7.0` for exact evidence claim-set evaluation and
+the existing distinct operator; the published MCP/scaffolder commands continue
+to resolve their original Core 0.5.0.
 
 ## Core build identity
 
@@ -115,8 +117,9 @@ provenance verification and a trusted host's independent acceptance process.
    execution binding and operating receipt. Leave historical acceptance evidence
    attached to its original build.
 
-Graph reasoning stays experimental after package promotion. Core 0.6.0 adds
-explicit entity distinctness; arbitrary code, grouping, ranking, arithmetic,
+Graph reasoning stays experimental after package promotion. Core 0.7.0 adds
+exact evidence claim-set evaluation; Core 0.6.0 introduced explicit entity
+distinctness. Arbitrary code, grouping, ranking, arithmetic,
 disjunction and calls to other graph functions remain unsupported. See
 [the capability and V2 migration contract](GRAPH_FUNCTIONS.md).
 

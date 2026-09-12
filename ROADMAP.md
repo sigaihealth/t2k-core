@@ -17,6 +17,9 @@ The bounded foundation below shipped in Core 0.5.0 and remains experimental.
   multi-path capacity queries, with merged evidence, conservative unknown
   propagation, deterministic resource accounting and reviewed generation support.
   Core 0.5.0 does not support this operator.
+- Core 0.7.0 adds opt-in exact supporting and considered evidence claim sets,
+  contradictory-label preflight, and bounded missing/extra development diagnostics.
+  Existing cases retain required-subset behavior and their hashes.
 - Still future work: schema/mapping-change evaluation, public MCP exposure,
   maintained views, cross-project reuse, and optional logical reasoning
 

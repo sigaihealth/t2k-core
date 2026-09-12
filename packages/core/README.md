@@ -29,7 +29,7 @@ subpaths are server-side modules.
 
 Source mapping, canonical reconciliation, entity resolution, purpose-access,
 and persisted reconciliation-review APIs remain available in this
-`@t2kai/core@0.6.0` stable release.
+`@t2kai/core@0.7.0` stable release.
 
 ## Experimental graph reasoning
 
@@ -70,8 +70,8 @@ suites require a reviewed migration to `t2k.graph-evaluation.v2`: assign explici
 supporting, considered, exclusion and per-row evidence roles, freeze a new hash,
 and rerun evaluation. Legacy evidence assertions are rejected, never inferred.
 
-The additive `expected.evidence.claimSetMatching` extension opts `supporting`
-and/or `considered` into `"exact"` claim-id set matching. Omitted roles remain
+Core 0.7.0 adds the `expected.evidence.claimSetMatching` extension, which opts
+`supporting` and/or `considered` into `"exact"` claim-id set matching. Omitted roles remain
 required subsets; considered means all inspected claims, including supporting
 claims. Hosts can detect supported roles with
 `GRAPH_EVALUATION_CLAIM_SET_MATCHING`. See the [evaluation contract](../../docs/GRAPH_FUNCTIONS.md#exact-evidence-claim-sets-additive-extension)
@@ -85,7 +85,7 @@ and independently authorize activation. A package migration can change the build
 identity even when a program's JSON is unchanged.
 
 See the complete [graph-function API, examples and bounds](https://github.com/sigaihealth/t2k-core/blob/main/docs/GRAPH_FUNCTIONS.md).
-The graph reasoning subpath remains experimental through the stable 0.6 release;
+The graph reasoning subpath remains experimental through the stable 0.7 release;
 the normative ontology schema and existing lifecycle interfaces are unchanged.
 
 ## Compile Packs Locally

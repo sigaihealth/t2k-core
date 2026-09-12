@@ -4,7 +4,7 @@ All notable changes to the public T2K standard and packages will be documented
 here. The project follows Semantic Versioning for packages and the compatibility
 rules in the versioned specification.
 
-## Unreleased
+## [0.7.0] - 2026-09-12
 
 ### Added
 
@@ -25,6 +25,9 @@ rules in the versioned specification.
   and the host's normal executable-build validation and runtime revalidation.
   Row and exclusion assertions, result and artifact versions, and interpreter
   operators remain unchanged.
+- MCP and scaffold source dependency pins track Core 0.7.0 for the exact-package
+  smoke gates. Their published 0.4.0/0.5.0 releases are unchanged; this release
+  publishes Core only.
 
 ## [0.6.0] - 2026-09-09
 
