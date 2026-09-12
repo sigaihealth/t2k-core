@@ -5,4 +5,5 @@ export * from "./reasoning-synthesis.js";
 export { GraphFunctionError } from "./reasoning-input.js";
 export { compileGraphFunction, GRAPH_RUNTIME_VERSION } from "./reasoning-compiler.js";
 export { executeGraphFunction, computeReasoningGraphHash } from "./reasoning-runtime.js";
-export { evaluateGraphFunction, computeGraphEvaluationSuiteHash, preflightGraphEvaluationSuite } from "./reasoning-evaluator.js";
+export { evaluateGraphFunction, computeGraphEvaluationSuiteHash, preflightGraphEvaluationSuite,
+  GRAPH_EVALUATION_CLAIM_SET_MATCHING } from "./reasoning-evaluator.js";

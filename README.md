@@ -47,13 +47,14 @@ network, private packs, and customer data are separate products.
   for opt-in lifecycle writes, four non-mutating integration tools, and no
   agent-accessible human-governance transitions.
 
-## Core 0.6 stable release
+## Core 0.7 stable release
 
-`@t2kai/core@0.6.0` adds explicit entity distinctness to the experimental graph
-interpreter, with merged evidence, conservative unresolved results, and reviewed
-generation requirements. The separately published `create-t2k@0.5.0` and
-`@t2kai/mcp@0.4.0` remain on Core 0.5.0; this release publishes Core only.
-See the [Core 0.6 release notes](docs/releases/0.6.0.md) and
+`@t2kai/core@0.7.0` adds opt-in exact supporting and considered evidence claim sets
+to experimental graph evaluation, with contradictory-label preflight and bounded
+missing/extra repair diagnostics. Existing cases retain required-subset behavior.
+The separately published `create-t2k@0.5.0` and `@t2kai/mcp@0.4.0` remain on
+Core 0.5.0; this release publishes Core only.
+See the [Core 0.7 release notes](docs/releases/0.7.0.md) and
 [graph-functions API and limits](docs/GRAPH_FUNCTIONS.md).
 
 ## Quick Start
@@ -200,7 +201,7 @@ The canonical npm package is `@t2kai/core`. The namespace mirrors `t2k.ai`;
 the shorter `@t2k` namespace belongs to an unrelated npm user.
 
 ```bash
-npm install @t2kai/core@0.6.0
+npm install @t2kai/core@0.7.0
 npm install @t2kai/mcp@0.4.0
 ```
 
@@ -219,7 +220,7 @@ import { compileOntologyPackSet } from "@t2kai/core/compiler";
 import { PostgresReferenceLifecycle } from "@t2kai/core/postgres";
 ```
 
-`@t2kai/core@0.6.0` includes the governed source-mapping,
+`@t2kai/core@0.7.0` includes the governed source-mapping,
 canonical-reconciliation, entity-resolution, and purpose-access exports plus
 the persisted reconciliation review and lineage path documented in the core
 guide.

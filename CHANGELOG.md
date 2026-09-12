@@ -4,6 +4,31 @@ All notable changes to the public T2K standard and packages will be documented
 here. The project follows Semantic Versioning for packages and the compatibility
 rules in the versioned specification.
 
+## [0.7.0] - 2026-09-12
+
+### Added
+
+- Opt-in exact supporting and considered evidence claim sets in graph evaluation
+  cases, with independent role selection, contradictory-label preflight and
+  bounded missing/extra development diagnostics. Hosts can detect the supported
+  roles through `GRAPH_EVALUATION_CLAIM_SET_MATCHING`.
+- Conditional exact-evidence generation instructions, exposed through
+  `graphGenerationInstructions(requirements, trainingCases)`, retain the reviewed
+  matching modes and evidence labels through candidate repair.
+
+### Compatibility
+
+- This is an additive opt-in extension of `t2k.graph-evaluation.v2`. Existing
+  omitted matching modes keep required-subset behavior, normalized suite and
+  evaluation hashes, and generation request bytes. Older evaluators reject
+  the new field. Adding exact matching requires newly reviewed, pinned labels
+  and the host's normal executable-build validation and runtime revalidation.
+  Row and exclusion assertions, result and artifact versions, and interpreter
+  operators remain unchanged.
+- MCP and scaffold source dependency pins track Core 0.7.0 for the exact-package
+  smoke gates. Their published 0.4.0/0.5.0 releases are unchanged; this release
+  publishes Core only.
+
 ## [0.6.0] - 2026-09-09
 
 ### Added
